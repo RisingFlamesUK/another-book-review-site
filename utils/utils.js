@@ -80,8 +80,6 @@ async function validateEmail(email) {
 
         //check if the email address is already used for a user account
         const existingUserByEmail = await db.findUser("email", email);
-        console.log (existingUserByEmail);
-        console.log("email:", email)
 
         if (existingUserByEmail) {
             const error = new Error(`${email} already has an account`);

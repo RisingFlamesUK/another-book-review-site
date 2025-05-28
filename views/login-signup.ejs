@@ -1,0 +1,63 @@
+<!-- views/login-signup.ejs -->
+<%- include("partials/header.ejs") %>
+<div class="flex justify-center">
+  <div class="form-container">
+    <div class="tab-container form-background" data-initial-tab="<%= activeTab %>">
+      <div class="tab-buttons">
+        <button class="tab-button <%= activeTab == 'login' ? 'active' : '' %>" data-tab="login">Login</button>
+        <button class="tab-button <%= activeTab == 'signup' ? 'active' : '' %>" data-tab="signup">Sign Up</button>
+      </div>
+
+      <div class="tab-content">
+        <div id="login" class="tab-panel">
+          <h2>Login</h2>
+          <form id="login-form" action="/login" method="POST">
+            <div class="form-group">
+              <label for="login-username">Username:</label>
+              <input type="text" id="login-username" name="username" required>
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password:</label>
+              <input type="password" id="login-password" name="password" required>
+            </div>
+            <button id="login-button" type="submit">Login</button>
+            <p><a href="/forgot-password">Forgot Password?</a>
+            <div id="login-status-message">
+              <% if (loginError) { %>
+              <p class="error-message"><%= loginError %></p>
+              <% } %>
+            </div>
+          </form>
+        </div>
+
+        <div id="signup" class="tab-panel">
+          <h2>Sign Up</h2>
+          <form id="signup-form" action="/signup" method="POST">
+            <div class="form-group">
+              <label for="signup-username">Username:</label>
+              <input type="text" id="signup-username" name="username" required>
+            </div>
+            <div class="form-group">
+              <label for="signup-email">Email:</label>
+              <input type="email" id="signup-email" name="email" required>
+            </div>
+            <div class="form-group">
+              <label for="signup-password">Password:</label>
+              <input type="password" id="signup-password" name="password" required>
+            </div>
+            <button id="signup-button" type="submit">Sign Up</button>
+            <div id="signup-status-message">
+              <% if (signupError) { %>
+              <p class="error-message"><%= signupError %></p>
+              <% } %>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/login-signup.js" defer></script>
+<!-- Footer -->
+<%- include("partials/footer.ejs") %>
