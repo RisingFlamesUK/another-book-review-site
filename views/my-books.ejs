@@ -1,0 +1,44 @@
+<!-- views/my-books.ejs -->
+<%- include("partials/header.ejs") %>
+
+
+
+<div class="flex vertical content-background width-100">
+  <div class="myBooks flex justify-center width-100">
+    <div>
+      <h2>My Books</h2>
+    </div>
+  </div>
+  <div class="myBooks flex justify-between width-100">
+    <div class="flex-third">
+
+    </div>
+    <div class="flex-remainder flex justify-center">
+      <p>Your books will be displayed here</p>
+    </div>
+    <div class="flex-third flex justify-right padding-x10">
+      <p>Show:
+        <select id="itemsPerPageDropdown">
+          <option value="6">6</option>
+          <option value="10" selected>10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        entries per page
+      </p>
+    </div>
+  </div>
+</div>
+<%- include("partials/card_holder.ejs", { cards: cards, cachedStatuses: cachedStatuses }) %>
+
+
+<!-- Footer -->
+<%- include("partials/footer.ejs") %>
+
+<script>
+  // Pass cards and cachedStatuses to the client side js
+  const allUserBooks = <%- JSON.stringify(cards); %>
+  const allUserStatuses = <%- JSON.stringify(cachedStatuses); %>
+</script>
+<script src="/js/my-books-script.js"></script>

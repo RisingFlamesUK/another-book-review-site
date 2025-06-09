@@ -8,14 +8,15 @@ This site was created in order to practice and showcase my skills and was a caps
 This is Capstone 5, which requires the creation of a Book Notes site. I have gone a few steps further and included multi-user access, user authentication, book reviews and scoring.
 All password data is encrypted by the database. I recommend altering the code to use HTTPS to ensure all client server communication is encrypted if you are going to use this on the web.
 
-I use a combination of two APIs provided by Open Library:
-https://openlibrary.org/dev/docs/api/search
-https://openlibrary.org/dev/docs/api/covers
+I use a combination of APIs provided by Open Library:
+https://openlibrary.org/developers/api
+
 
 ---------
 Using the code
 ---------
-This site uses node.js and a postgres database.
+This site uses node.js and a postgres database. You will need both.
+I used node.js version v24.1.0, which was the latest at the time of writing. Using other version may yield unexpected results.
 
 1. Create a file in root called .env
 
@@ -32,13 +33,13 @@ This site uses node.js and a postgres database.
     PG_HOST = [postgres hostname]
     ---------------------------------------
 
-3. Run the queries in queries.sql to generate the database tables required
+3. Run the queries in queries.sql to generate the database tables required in postgres
 
 4. Run the following commands:
 
     npm i
     npm audit fix      (if needed)
-    nodemon app.js     (or node app.js if you dont want to use nodemon)
+    node app.js     (or nodemon app.js if you want to use nodemon instead)
 
 
 Here are the stated objectives and requirements from the course:

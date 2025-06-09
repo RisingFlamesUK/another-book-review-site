@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <!-- Bootstrap Icons -->
-   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
   <!-- Favicons -->
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
@@ -30,9 +30,9 @@
 <body>
 
   <header class="flex align-center">
-    <div class="flex justify-between align-center width100">
-      <div class="header-left">
-        <a href="/"><i class="bi bi-house"></i></a>
+    <div class="flex justify-between align-center width-100">
+      <div class="header-left button">
+        <a href="/"><i class="bi bi-house header-not-logged-in "></i></a>
       </div>
       <div id="banner" class="flex justify-center align-center">
         <div>
@@ -46,9 +46,19 @@
           </a>
         </div>
       </div>
-      <div class="header-right flex vertical align-center">
-        <a href="/login-signup" class="m-0"><i class="bi bi-person-circle"></i></a>
-        <p class="m-0"><a href="/login-signup" class="m-0">Login / Sign-up</a></p>
+      <div class="header-right flex vertical align-center button">
+        <div>
+          <% if (locals.user) { %>
+          <% if (locals.user.image) { %>
+          <img src="<%= locals.user.image %>" alt="User profile picture">
+          <% } else { %>
+          <i class="bi bi-person-bounding-box header-logged-in"></i>
+          <% } %>
+          <% } else { %>
+          <a href="/login-signup" class="m-0"><i class="bi bi-person-circle header-not-logged-in"></i></a>
+          <p class="m-0"><a href="/login-signup" class="m-0">Login / Sign-up</a></p>
+          <% } %>
+        </div>
       </div>
     </div>
 

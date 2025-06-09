@@ -1,0 +1,49 @@
+<!-- views/partials/card_holder.ejs -->
+<div id="card-holder-container" class="followon-container content-background">
+  <div class="card-holder-header flex align-center justify-between">
+
+    <div class="button">
+      <button id="add-books-button">
+        <i class="bi bi-bookmark-plus-fill add-books-icon"></i>
+        <i class="button-text"> Add Books</i>
+      </button>
+    </div>
+
+    <div class="flex filler">
+    </div>
+
+    <div class="filter-controls flex vertical">
+      <label for="statusFilter">Filter by Status:</label>
+      <select id="statusFilter">
+        <option value="all">All</option>
+        <% if (locals.cachedStatuses && Array.isArray(locals.cachedStatuses)) { %>
+        <% locals.cachedStatuses.forEach(status => { %>
+        <option value="<%= status.id %>"><%= status.status %></option>
+        <% }) %>
+        <% } %>
+      </select>
+    </div>
+
+    <div class="search-controls flex vertical ">
+      <label for="bookSearch">Search Books:</label>
+      <input type="text" id="bookSearch" placeholder="Title or Author...">
+    </div>
+  </div>
+
+  <div class="card-holder-cards">
+    <% if (locals.cards && locals.cards.length > 0) { %>
+    <% cards.forEach(card => { %>
+    <%- include("./book_card.ejs", card); %>
+    <% }) %>
+    <% } else { %>
+      <p class="padding-x10">No books found in your library.</p>
+      <% } %>
+  </div>
+
+  <div class="pagination-controls flex justify-center align-center followon-container">
+    <button id="prevPageBtn" class="pagination-btn">&laquo; Previous</button>
+    <div id="pageNumbers" class="page-numbers-container">
+    </div>
+    <button id="nextPageBtn" class="pagination-btn">Next &raquo;</button>
+  </div>
+</div>
