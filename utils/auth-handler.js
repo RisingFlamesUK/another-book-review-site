@@ -70,7 +70,7 @@ export async function loginUser(req, res) {
             throw error;
         }
     } catch (error) {
-        console.error(`${ip}: Login error in loginUser:`, error);
+        console.error(`${ip}: Login error: ${error.message} (Status: ${error.statusCode || 'N/A'})`);
         throw error;
     }
 };

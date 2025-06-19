@@ -12,7 +12,13 @@ import {
     cachedSubjects,
     cachedOlids,
     cachedLanguages,
+    cachedTrending,
+    cachedBrowseSubjects,
     getUserBooks,
+    setUserScore,
+    getWorkScore,
+    getUserReviews,
+    logCurrentCache,
 } from './utils/db-handler.js';
 import generateSecret from "./utils/encryption-handler.js";
 import dotenv from 'dotenv';
@@ -21,6 +27,7 @@ import rateLimit from 'express-rate-limit';
 import * as utils from './utils/utils.js';
 import * as ol from './utils/ol-handler.js';
 import * as ejsHelpers from './utils/ejs-helpers.js';
+import * as be from './utils/backend-data-handler.js'
 
 dotenv.config();
 
@@ -68,17 +75,34 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // --- START: Initialise DB and Cache ---
+let subjects = [
+    'Fiction',
+    'Non-Fiction'
+]
+let subjectLanguage = 'eng'
+let subjectReelLength = 20; // need enough to feed the reel.
+
 try {
-    console.log("Initializing database caches...");
-    await initDbAndCache(); // Initialize DB connection and cache data
-    console.log('Database caches populated successfully.');
-    console.log('Caches are populated.');
-    console.log('Cached Statuses:', cachedStatuses.length > 0 ? cachedStatuses.length : 'empty');
-    console.log('Cached Subjects:', cachedSubjects.length > 0 ? cachedSubjects.length : 'empty');
-    console.log('Cached Olids:', cachedOlids.works ? Object.keys(cachedOlids).length : 'empty');
-    console.log('Cached Langages:', cachedLanguages.length > 0 ? cachedLanguages.length : 'empty');
+    await initDbAndCache(subjects, subjectLanguage, subjectReelLength); // Initialize DB connection and cache data
+    console.log('   Cached Statuses:', cachedStatuses.length > 0 ? cachedStatuses.length : 'empty');
+    console.log('   Cached Subjects:', cachedSubjects.size > 0 ? cachedSubjects.size : 'empty');
+    const totalOlids = cachedOlids.editions.size + cachedOlids.works.size + cachedOlids.authors.size;
+    console.log('   Cached Olids:', totalOlids > 0 ? totalOlids : 'empty');
+    console.log('   Cached Langages:', cachedLanguages.size > 0 ? cachedLanguages.size : 'empty');
+    console.log('   Cached Trending:', cachedTrending && cachedTrending.data && cachedTrending.data.length > 0 ?
+        cachedTrending.data.length : 'empty');
+    console.log('   Cached Browse Subjects:');
+    for (const subjectName in cachedBrowseSubjects) {
+        if (Object.hasOwnProperty.call(cachedBrowseSubjects, subjectName)) {
+            const subjectCache = cachedBrowseSubjects[subjectName];
+            // Ensure subjectCache.data exists and is an array before trying to get its length
+            const dataCount = subjectCache && Array.isArray(subjectCache.data) ? subjectCache.data.length : 0;
+            console.log(`      ${subjectName}: `,dataCount);
+        }
+    }
+
 } catch (error) {
-    console.error('Server failed to start due to database/cache initialization error:', error);
+    console.error('***Server failed to start due to database/cache initialization error:', error, "***");
     process.exit(1); // Exit process if critical initialization fails
 }
 // --- END: Initialise DB and Cache ---
@@ -271,21 +295,23 @@ app.get('/', (req, res) => {
 //-------------------------------------
 app.get('/books', async (req, res) => {
     if (req.session.isLoggedIn) {
-        //change to res.render
         let user = {
             user_id: req.session.user.id,
             username: req.session.user.username,
             image: req.session.user.image
         };
         let cards = await getUserBooks(user.user_id);
+
         res.render("my-books.ejs", {
             user,
             cards,
             cachedStatuses: cachedStatuses,
             processScore: ejsHelpers.processScore,
             scoreToStars: ejsHelpers.scoreToStars,
+            processUserScore: ejsHelpers.processUserScore,
             processAuthors: ejsHelpers.processAuthors,
             processDescription: ejsHelpers.processDescription,
+            toTitleCase: ejsHelpers.toTitleCase,
         })
     } else {
         res.redirect('/');
@@ -341,11 +367,10 @@ app.get('/signup', (req, res) => {
 //-------------------------------------
 // 4.	View Edition
 //-------------------------------------
-app.post('/edition', (req, res) => {
-    const cardData = req.body; 
+app.post('/edition', async (req, res) => {
+    const cardData = req.body;
+    let user = undefined;
 
-    // The 'description' and 'authors' fields will arrive as JSON strings,
-    // so you need to parse them back into their original types.
     try {
         if (cardData.description) {
             cardData.description = JSON.parse(cardData.description);
@@ -353,24 +378,69 @@ app.post('/edition', (req, res) => {
         if (cardData.authors) {
             cardData.authors = JSON.parse(cardData.authors);
         }
+        if (req.session.isLoggedIn) {
+            user = req.session.user;
+            let result = await getUserReviews(user.id, cardData?.edition_olid);
+            cardData.userReview = result[0];
+        } else {
+            cardData.userReview = null;
+        }
+
+        cardData.workScore = await getWorkScore(cardData.work_olid);
+
+        if (cardData.workScore?.work_olid.length === 0) {
+            cardData.workScore = null;
+        }
+
     } catch (e) {
         console.error("Error parsing JSON data from submitted card:", e);
         return res.status(400).send("Invalid data format received.");
     }
 
-    console.log("Received card data on /edition POST:", cardData);
+    // console.log("Received card data on /edition POST:", cardData);
 
-    // Now you have all the cardData in the `cardData` object.
-    // You can use this data to render your edition page without another DB query.
-    res.render('edition.ejs', { edition: cardData }); // Assuming you have an 'edition_page.ejs'
+    res.render('edition.ejs', {
+        user: user,
+        edition: cardData,
+        cachedStatuses: cachedStatuses,
+        processUserScore: ejsHelpers.processUserScore,
+        processScore: ejsHelpers.processScore,
+        scoreToStars: ejsHelpers.scoreToStars,
+        processAuthors: ejsHelpers.processAuthors,
+        processDescription: ejsHelpers.processDescription,
+        toTitleCase: ejsHelpers.toTitleCase,
+    });
 });
 
 //-------------------------------------
 // 5.	Browse Books 
 //      (incl add to collection)
 //-------------------------------------
+app.get('/browse', async (req, res) => {
+    let user = undefined;
+    if (req.session.isLoggedIn) {
+        user = {
+            user_id: req.session.user.id,
+            username: req.session.user.username,
+            image: req.session.user.image
+        };
+    }
 
+    let cards = {};
+    if (cachedTrending && cachedTrending.data && cachedTrending.data.length > 0) {
+        cards.trending = cachedTrending.data;
+    } else {
+        cards.trending = []
+    }
+    cards.browseSubjects = cachedBrowseSubjects;
 
+    res.render('browse-books.ejs', {
+        user: user,
+        cards: cards,
+
+    })
+
+});
 
 //-------------------------------------
 //     **** Data handling ****
@@ -379,10 +449,12 @@ app.post('/edition', (req, res) => {
 app.get('/search', async (req, res) => {
     const criteria = req.query.criteria;
     const type = req.query.type;
+    const page = req.query?.page || 1;
+    const language = req.query?.language || undefined;
 
     try {
-        const response = await ol.getData(type, criteria);
-        // If getData returns null for no results, send 404 or empty response
+        const response = await ol.getOlData(type, criteria, page, language);
+        // If getOlData returns null for no results, send 404 or empty response
         if (response === null) {
             return res.status(404).json({
                 message: `No data found for ${type} with criteria: ${criteria}`
@@ -440,7 +512,7 @@ app.post('/add-edition', async (req, res) => {
             authors = []; // If no authors provided, default to an empty array
         }
 
-        const response = await utils.selectedEdition(user_id, edition_olid, authors);
+        const response = await be.selectedEdition(user_id, edition_olid, authors, true);
         return res.status(200).json({
             message: response
         });
@@ -452,12 +524,70 @@ app.post('/add-edition', async (req, res) => {
         });
     }
 });
+//-------------------------------------
+// 2. POST a user score 
+//-------------------------------------
+app.post('/set-user-score', async (req, res) => {
+    // Ensure user is logged in
+    if (!req.session.user || !req.session.user.id) {
+        return res.status(401).json({
+            success: false,
+            message: 'You must be logged in to set a score.'
+        });
+    }
+
+    const {
+        edition_olid,
+        work_olid,
+        score
+    } = req.body;
+    const user_id = req.session.user.id;
+
+    // Basic validation
+    if (!edition_olid || !work_olid || score === undefined || score < 1 || score > 5) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid rating data provided.'
+        });
+    }
+
+    try {
+        const result = await setUserScore(user_id, edition_olid, work_olid, score);
+
+        if (result.newUserScore === score) {
+
+            res.json({
+                success: true,
+                message: 'Rating updated successfully.',
+                newUserScore: result.newUserScore,
+                newWorkScore: result.newWorkScore ? result.newWorkScore : null,
+                newWorkReviewCount: result.newWorkReviewCount ? result.newWorkReviewCount : null
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to update rating in database.'
+            });
+        }
+    } catch (error) {
+        console.error('Error in /set-user-score route:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An internal server error occurred.'
+        });
+    }
+});
+
+// This middleware will be executed if no other route has matched the request.
+app.use((req, res, next) => {
+    res.status(404).send("Sorry, the page you're looking for doesn't exist!");
+});
 
 app.listen(port, () => {
     console.log("------------------------------------------------------");
     console.log(`Server running on port ${port}`);
     console.log("------------------------------------------------------");
-    utils.logCurrentCache();
+    // logCurrentCache();
     console.log("");
-    
+
 });

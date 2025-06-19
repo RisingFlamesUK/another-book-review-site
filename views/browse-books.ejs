@@ -1,0 +1,43 @@
+<!-- views/browse-books.ejs -->
+<%- include("partials/header.ejs") %>
+
+<div class="browse-books-content flex vertical align-center  width-100">
+  <div class="flex vertical content-background width-100">
+    <div class="browse-books-header flex justify-center width-100">
+      <div>
+        <h2>Browse Books</h2>
+      </div>
+    </div>
+    <div class="browse-books flex justify-between width-100">
+      <div class="flex-third">
+        <div class="button left-margin-20">
+          <div class="page-navigation-button">
+            <a href="/">
+              <i class="bi bi-chevron-double-left"></i>
+              <i class="button-text">Back</i>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="flex-remainder flex justify-center">
+
+      </div>
+      <div class="flex-third flex justify-right padding-x10">
+        <p>Search:
+
+        </p>
+      </div>
+    </div>
+  </div>
+  <div id="trending-container" class="browse-card-holder-container followon-container content-background">
+    <%- include("partials/browse-card-carousel.ejs", { "cards": cards.trending, "carouselTitle": "Trending" }) %>
+  </div>
+  <% let i=1; for (const [subject_name, subject_data] of Object.entries(cards.browseSubjects)) { %>
+  <div id="<%= subject_name %>-container" class="browse-card-holder-container followon-container content-background subject-<%= i %>">
+    <%- include("partials/browse-card-carousel.ejs", { "cards": subject_data.data, "carouselTitle": subject_name }) %>
+  </div>
+  <% i++; } %>
+
+</div>
+<!-- Footer -->
+<%- include("partials/footer.ejs") %>

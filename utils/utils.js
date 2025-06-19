@@ -1,45 +1,12 @@
 // This file is /utils/utilsjs
 import EmailValidation from 'emailvalid';
-import * as ol from './ol-handler.js'
 import {
-    cachedOlids,
-    cachedSubjects,
-    cachedStatuses,
     cachedLanguages,
-    putOlSubject,
-    putOlWork,
-    putOlEdition,
-    putOlWorkSubject,
-    putOlAuthor,
-    putOlAuthorBook,
-    putOlEdition_Language,
-    putUserEdition,
-    checkUserBook,
-    findUser
+    findUser,
 } from './db-handler.js';
 
-// Helper function to check cachedOlids, cachedSubjects, cachedLanguages
-export function checkCache(type, data) {
-    switch (type) {
-        case 'work_olid':
-            return cachedOlids.works.includes(data);
-        case 'edition_olid':
-            return achedOlids.editions.includes(data);
-        case 'author_olid':
-            return cachedOlids.authors.includes(olid);
-        case 'subject_name':
-            return cachedSubjects.some(s => s.name.toLowerCase === data.toLowerCase);
-        case 'subject_type':
-            return cachedSubjects.some(s => s.type.toLowerCase === data.toLowerCase);
-        case 'language_key':
-            return cachedLanguages.some((l) => l.key.toLowerCase === data.toLowerCase);
-        case 'language':
-            return cachedLanguages.some((l) => l.language.toLowerCase === data.toLowerCase);
-    }
-}
-
 /**
- * Looks up language information from the cachedLanguages array.
+ * Looks up language information from the cachedLanguages Map.
  *
  * @param {string} type - The property to match against ('key', 'language', 'id').
  * @param {string | number | Array<string | number>} data - The value(s) to look for.
@@ -71,64 +38,40 @@ export function languageLookup(type, data, returnProperty = 'all') {
         }
     };
 
-    // Determine the comparison function based on the 'type'
-    const getComparisonFunction = (lookupValue) => {
-        switch (type) {
-            case 'key':
-                return (lang) => lang.key === lookupValue;
-            case 'language':
-                return (lang) => lang.language === lookupValue;
-            case 'id':
-                // Use loose equality (==) for ID comparison if data types might vary (string vs. number)
-                return (lang) => lang.id == lookupValue;
-            default:
-                console.warn(`languageLookup: Unsupported lookup type "${type}".`);
-                return () => false; // Always returns false for unsupported types
+    // Helper function to perform the actual lookup based on type
+    const performSingleLookup = (lookupValue) => {
+        if (type === 'key') {
+            return cachedLanguages.get(lookupValue);
+        } else {
+
+            for (const lang of cachedLanguages.values()) {
+                switch (type) {
+                    case 'language':
+                        if (lang.language.toLowerCase() === String(lookupValue).toLowerCase()) {
+                            return lang;
+                        }
+                        break;
+                    case 'id':
+                        if (lang.id == lookupValue) {
+                            return lang;
+                        }
+                        break;
+                    default:
+                        console.warn(`languageLookup: Unsupported lookup type "${type}".`);
+                        return undefined; // Return undefined for unsupported types
+                }
+            }
+            return undefined; // No language found after iterating
         }
     };
 
     if (Array.isArray(data)) {
         // If data is an array, map over it to perform lookups for each item
-        return data.map(item => {
-            const comparisonFn = getComparisonFunction(item);
-            const foundLanguage = cachedLanguages.find(comparisonFn);
-            return getDesiredValue(foundLanguage);
-        });
+        return data.map(item => getDesiredValue(performSingleLookup(item)));
     } else {
         // If data is a single value, perform a single lookup
-        const comparisonFn = getComparisonFunction(data);
-        const foundLanguage = cachedLanguages.find(comparisonFn);
+        const foundLanguage = performSingleLookup(data);
         return getDesiredValue(foundLanguage);
-    }
-}
-
-
-// Helper function to update cachedOlids and cachedSubjects
-export function updateCache(type, olid, data = null) {
-    switch (type) {
-        case 'edition':
-            if (!cachedOlids.editions.includes(olid)) {
-                cachedOlids.editions.push(olid);
-            }
-            break;
-        case 'work':
-            if (!cachedOlids.works.includes(olid)) {
-                cachedOlids.works.push(olid);
-            }
-            break;
-        case 'author':
-            if (!cachedOlids.authors.includes(olid)) {
-                cachedOlids.authors.push(olid);
-            }
-            break;
-        case 'subject':
-            // For subjects, 'data' should be the object {id, name, type}
-            if (data && !cachedSubjects.some(s => s.name === data.name)) {
-                cachedSubjects.push(data);
-            }
-            break;
-        default:
-            console.warn(`Attempted to update cache with unknown type: ${type}`);
     }
 }
 
@@ -173,7 +116,23 @@ export function formatPrefix(type, data) {
                 return workItem.key.split('/').pop();
             }
 
+        case 'edition':
+            prefix = '/books/';
+            // For 'edition', we expect and process only the first item to return a single OLID
+            const editionItem = data[0]; // Assuming there's only one work item in the array
 
+            if (!editionItem || typeof editionItem.key !== 'string') {
+                console.warn(`formatPrefix: Invalid item in data array for 'edition' type or missing 'key':`, editionItem);
+                return null;
+            }
+
+            if (editionItem.key.startsWith(prefix)) {
+                return editionItem.key.substring(prefix.length);
+            } else {
+                console.warn(`formatPrefix: Edition key "${editionItem.key}" does not start with expected prefix "${prefix}". Extracting last segment.`);
+                // Fallback to getting the last segment if prefix is not found
+                return editionItem.key.split('/').pop();
+            }
         case 'authors':
             prefix = '/authors/';
             break;
@@ -286,6 +245,53 @@ async function validateUsername(username, newUser = false) {
     }
 }
 
+
+
+/**
+ * Checks a string to ensure it's in a valid Open Library ID (OLID) format,
+ * and returns the type of OLID if valid.
+ * A valid OLID starts with "OL", followed by one or more digits,
+ * and ends with either "M" (Multi-work/Edition), "W" (Work), or "A" (Author).
+ *
+ * @param {string} text - The string to validate as an OLID.
+ * @returns {('edition'|'work'|'author')} - Returns 'edition', 'work', or 'author' if the string is a valid OLID.
+ * @throws {Error} - Throws an error with a descriptive message if the OLID is invalid or if the type cannot be determined.
+ */
+export function validateOlid(text) {
+    if (typeof text !== 'string' || text.length < 4) {
+        throw new Error('Invalid OLID: Input must be a string and at least 4 characters long.');
+    }
+
+    // Regular expression for OLID format:
+    // ^      : Start of the string
+    // OL     : Must start with "OL"
+    // \d+    : Must be followed by one or more digits (0-9)
+    // [MWA]  : Must end with a single character that is 'M', 'W', or 'A'
+    // $      : End of the string
+    const olidRegex = /^OL\d+[MWA]$/;
+
+    // Test if the text matches the OLID pattern
+    if (!olidRegex.test(text)) {
+        throw new Error('Invalid OLID. OLIDs must be in the format "OL" followed by digits, and ending with "M", "W", or "A" (e.g., "OL12345M", "OL6789W", "OL123A").');
+    }
+
+    // If validation passes, extract the last character to determine the type
+    const olidTypeChar = text.slice(-1);
+
+    switch (olidTypeChar) {
+        case 'M':
+            return 'edition';
+        case 'W':
+            return 'work';
+        case 'A':
+            return 'author';
+        default:
+            // This case should theoretically not be reached if the regex is correct,
+            // but it acts as a safeguard.
+            throw new Error('Internal error: Could not determine OLID type from valid OLID format character.');
+    }
+}
+
 async function validateEmail(email) {
     try {
         //convert email to lower case
@@ -340,278 +346,3 @@ async function validatePassword(password) {
     }
 }
 
-export async function selectedEdition(user_id, edition_olid) {
-    if (!user_id || !edition_olid) {
-        throw new Error('User ID and Edition OLID are required.');
-    }
-    try {
-        let isEditionCached = cachedOlids.editions.includes(edition_olid);
-        let worksDescription = null;
-        let authors = [];
-
-        if (!isEditionCached) {
-            console.log(`Processing uncached edition: ${edition_olid}`);
-
-            // 1. Get Edition Details
-            const editionResponse = await ol.getData("edition", edition_olid);
-            if (!editionResponse || !editionResponse.work_olid) {
-                throw new Error(`Failed to retrieve valid edition data for OLID: ${edition_olid}`);
-            }
-            const work_olid = editionResponse.work_olid;
-            let isWorkCached = cachedOlids.works.includes(work_olid);
-            let languages = editionResponse.languages; // Capture for later use
-
-            if (!isWorkCached) {
-                console.log(`Processing uncached work: ${work_olid}`);
-                // 2. Get Work Details
-                const worksResponse = await ol.getData("works", work_olid);
-                if (!worksResponse || !worksResponse.title) {
-                    throw new Error(`Failed to retrieve valid work data for OLID: ${work_olid}`);
-                }
-
-                worksDescription = worksResponse.description; // Capture for later use
-                authors = worksResponse.authors; // Capture for later use
-
-                // 2a. Store Work Data in DB
-                const storedWorkOlid = await putOlWork(
-                    work_olid,
-                    worksResponse.title,
-                    worksResponse.first_publication_date
-                );
-
-                if (storedWorkOlid !== work_olid) {
-                    throw new Error(`Failed to store work data in database for OLID: ${work_olid}`);
-                }
-                updateCache('work', work_olid);
-                console.log(`... Added works data to database and cache: ${work_olid}`);
-
-                // 2b. Process Subjects
-                if (worksResponse.subjects && Array.isArray(worksResponse.subjects) && worksResponse.subjects.length > 0) {
-                    console.log(`Processing subjects for work: ${work_olid}`);
-                    const subjectPromises = worksResponse.subjects.map(async (subjectName) => {
-                        const isSubjectCached = cachedSubjects.some(s => s.name === subjectName);
-                        if (!isSubjectCached) {
-                            const subject_id = await putOlSubject(subjectName, null); //type is always null for now - will be used to group subjects later
-                            if (subject_id) {
-                                updateCache('subject', null, {
-                                    id: subject_id,
-                                    name: subjectName,
-                                    type: null
-                                });
-                                console.log(`... Added subject data to database and cache: ${subjectName}`);
-                                return {
-                                    id: subject_id,
-                                    name: subjectName
-                                }; // Return for works_subjects later
-                            } else {
-                                console.warn(`Failed to store subject '${subjectName}' in database. Skipping association.`);
-                                return null; // Indicate failure for this subject
-                            }
-                        } else {
-                            // Find the ID of the cached subject to use for works_subjects
-                            const existingSubject = cachedSubjects.find(s => s.name === subjectName);
-                            if (existingSubject) {
-                                console.log(`... Subject already cached: ${subjectName}`);
-                                return {
-                                    id: existingSubject.id,
-                                    name: subjectName
-                                };
-                            }
-                            return null; // Should not happen if cachedSubjects is correct
-                        }
-                    });
-
-
-                    const processedSubjects = (await Promise.all(subjectPromises)).filter(s => s !== null);
-
-
-                    // 2c. Store Works-Subjects Associations
-                    if (processedSubjects.length > 0) {
-                        const workSubjectPromises = processedSubjects.map(async (subject) => {
-                            try {
-                                await putOlWorkSubject(work_olid, subject.id);
-                                // console.log(`... Added work-subject association: ${work_olid} - ${subject.name}`);
-                            } catch (error) {
-                                // Log the error but don't stop the whole process for one failed association
-                                console.warn(`Failed to store work-subject association for work ${work_olid} and subject ${subject.name}:`, error.message);
-                            }
-                        });
-                        await Promise.all(workSubjectPromises);
-                    }
-                } else {
-                    console.log(`No subjects found for work: ${work_olid}`);
-                }
-            } else {
-                console.log(`Work already cached: ${work_olid}`);
-            }
-
-            // 3. Store Edition Details
-            const preferedDescription = editionResponse?.description ?? worksDescription ?? null;
-            const storedEditionOlid = await putOlEdition(
-                edition_olid,
-                work_olid,
-                editionResponse.title,
-                preferedDescription,
-                editionResponse.publish_date,
-                editionResponse.cover_url
-            );
-
-            if (storedEditionOlid !== edition_olid) {
-                throw new Error(`Failed to store edition data in database for OLID: ${edition_olid}`);
-            }
-            updateCache('edition', edition_olid);
-            console.log(`... Added edition data to database and cache: ${edition_olid}`);
-
-
-            // 4. Store editions_languages Assiciations
-            if (languages && Array.isArray(languages) && languages.length > 0) {
-                console.log(`Processing languages for edition: ${edition_olid}`);
-                for (const language of languages) {
-
-                    if (language && typeof language.key === 'string') {
-                        const prefix = 'languages/';
-                        const startIndex = language.key.indexOf(prefix);
-
-                        // Substring extraction: Ensure 'languages/' prefix exists
-                        let key = language.key; // Default to full key if prefix not found
-                        if (startIndex !== -1) {
-                            key = language.key.substring(startIndex + prefix.length);
-                        } else {
-                            console.warn(`Language key "${language.key}" does not contain expected prefix "${prefix}". Using full key.`);
-                        }
-
-                        let cachedLanguage_index = cachedLanguages.findIndex((l) => l.key === key);
-                        let language_id = cachedLanguages[cachedLanguage_index].id;
-
-                        const storedEdition_Language = await putOlEdition_Language(
-                            edition_olid,
-                            language_id
-
-                        );
-
-                        if (storedEdition_Language.edition_olid !== edition_olid && storedEdition_Language.language_id !== language_id) {
-                            throw new Error(`Failed to store language:edition associacion in database for ${language_id}: ${edition_olid}`);
-                        } else {
-                            console.log('Successfully set the language for edition_olid: ', edition_olid, "-", cachedLanguages[cachedLanguage_index].language)
-                        }
-                    } else {
-                        console.warn('Skipping malformed language object:', language);
-                    }
-                };
-            } else {
-                console.log(`No languages provided for edition: ${edition_olid}`);
-            }
-        } else {
-            console.log(`Edition already cached: ${edition_olid}`);
-        }
-
-
-
-        // 5. Process Authors (concurrently using Promise.all)
-        if (authors && Array.isArray(authors) && authors.length > 0) {
-            console.log(`Processing authors for edition: ${edition_olid}`);
-            const authorProcessingPromises = authors.map(async (author_olid) => {
-                const isAuthorCached = cachedOlids.authors.includes(author_olid);
-                if (!isAuthorCached) {
-                    console.log(`Processing uncached author: ${author_olid}`);
-                    try {
-                        const authorResponse = await ol.getData("author", author_olid);
-                        if (!authorResponse || !authorResponse.name) {
-                            console.warn(`Failed to retrieve valid author data for OLID: ${author_olid}. Skipping.`);
-                            return; // Skip this author but don't break the Promise.all
-                        }
-
-                        const storedAuthorOlid = await putOlAuthor(
-                            author_olid,
-                            authorResponse.name,
-                            authorResponse.bio,
-                            authorResponse.birth_date,
-                            authorResponse.death_date,
-                            authorResponse.pic_url
-                        );
-
-                        if (storedAuthorOlid !== author_olid) {
-                            console.warn(`Failed to store author data in database for OLID: ${author_olid}. Skipping association.`);
-                            return;
-                        }
-                        updateCache('author', author_olid);
-                        console.log(`... Added author data to database and cache: ${author_olid}`);
-
-                    } catch (error) {
-                        console.warn(`Error processing author ${author_olid}:`, error.message);
-                        return; // Continue processing other authors
-                    }
-                } else {
-                    console.log(`Author already cached: ${author_olid}`);
-                }
-
-                // Always try to associate author with edition if author data is available (cached or newly added)
-                try {
-                    await putOlAuthorBook(author_olid, edition_olid);
-                    // console.log(`... Added author-edition association: ${author_olid} - ${edition_olid}`);
-                } catch (error) {
-                    // Log the error but don't stop the whole process for one failed association
-                    console.warn(`Failed to store author-edition association for author ${author_olid} and edition ${edition_olid}:`, error.message);
-                }
-            });
-            await Promise.all(authorProcessingPromises); // Wait for all authors to be processed
-        } else {
-            console.log(`No authors provided for edition: ${edition_olid}`);
-        }
-        logCurrentCache();
-
-        // 5. Add Edition to User's Collection
-        const userBookId = await putUserEdition(user_id, edition_olid);
-        if (!userBookId) { // Check if putUserEdition returned a valid id or false response
-            // This can happen if UNIQUE constraint is violated (user already has this edition)
-            // Or if there's a different DB error
-            const existingUserBook = await checkUserBook(user_id, edition_olid);
-            if (existingUserBook) {
-                console.log(`Edition ${edition_olid} already exists in user ${user_id}'s collection.`);
-                return `Edition ${edition_olid} is already in your collection.`;
-            } else {
-                throw new Error(`Failed to add edition ${edition_olid} to user ${user_id}'s collection.`);
-            }
-        }
-        console.log(`Edition ${edition_olid} added to user ${user_id}'s collection.`);
-        return `Edition ${edition_olid} added to your collection.`;
-
-    } catch (error) {
-        console.error(`Error in selectedEdition for user ${user_id}, edition ${edition_olid}:`, error.message);
-        // Re-throw the error so the calling function (e.g., app.post('/edition')) can handle it
-        throw error;
-    }
-}
-
-
-
-export function logCurrentCache() {
-    console.log('Cached Olids: \n', cachedOlids);
-    console.log('Cached Subjects:');
-    const transformedCachedSubjects = cachedSubjects.reduce((subjects, {
-        id,
-        ...x
-    }) => {
-        subjects[id] = x;
-        return subjects
-    }, {});
-    console.table(transformedCachedSubjects);
-    console.log('Cached Statuses:');
-    const transformedCachedStatuses = cachedStatuses.reduce((statuses, {
-        id,
-        ...x
-    }) => {
-        statuses[id] = x;
-        return statuses
-    }, {});
-    console.table(transformedCachedStatuses);
-    console.log('Cached Languages:');
-    const transformedCachedLanguages = cachedLanguages.reduce((languages, {
-        id,
-        ...x
-    }) => {
-        languages[id] = x;
-        return languages
-    }, {});
-    console.table(transformedCachedLanguages);
-}

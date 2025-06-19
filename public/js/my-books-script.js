@@ -1,3 +1,4 @@
+// public/js/my-books-script.js
 document.addEventListener('DOMContentLoaded', () => {
     //We have allUserBooks and allStatus already
     // Filter elements
@@ -17,33 +18,42 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     let filteredAndSearchedCardElements = [];
 
-    // Get references to all individual book card elements
-    const allBookCardElements = Array.from(bookCardsContainer.querySelectorAll('.card-container'));
+    // Get references to all individual book card *form* elements
+    const allBookCardForms = Array.from(bookCardsContainer.querySelectorAll('.card-form'));
 
     // Map edition_olid to its DOM element for quick lookup
+    // Update: Map edition_olid to the .card-form element
     const cardElementMap = new Map();
-    allBookCardElements.forEach(element => {
-        cardElementMap.set(element.dataset.editionOlid, element);
+    allBookCardForms.forEach(formElement => {
+        // Assuming edition_olid is on the card-container within the form, or the form itself.
+        // If it's on the card-container, you'll need to get it like this:
+        const cardContainer = formElement.querySelector('.card-container');
+        if (cardContainer) { // Ensure cardContainer exists
+            cardElementMap.set(cardContainer.dataset.editionOlid, formElement); // Store the form element
+        }
     });
 
     function applyFiltersAndSearch() {
         const searchTerm = searchInput.value.toLowerCase().trim();
         const selectedStatusId = statusFilter.value;
 
-        // Reset the list of currently matched cards
+        // Reset the list of currently matched cards (now forms)
         filteredAndSearchedCardElements = [];
 
         // First, determine which cards match the current search and filter criteria
-        allBookCardElements.forEach(cardElement => {
-            const cardTitle = cardElement.dataset.title ? cardElement.dataset.title.toLowerCase() : '';
-            const cardAuthors = cardElement.dataset.authors ? cardElement.dataset.authors.toLowerCase() : ''; // Comma-separated author names
-            const cardStatusId = cardElement.dataset.statusId;
+        allBookCardForms.forEach(formElement => { // Iterate over forms
+            const cardContainer = formElement.querySelector('.card-container'); // Get the inner div
+            if (!cardContainer) return; // Skip if no card-container found within form
+
+            const cardTitle = cardContainer.dataset.title ? cardContainer.dataset.title.toLowerCase() : '';
+            const cardAuthors = cardContainer.dataset.authors ? cardContainer.dataset.authors.toLowerCase() : '';
+            const cardStatusId = cardContainer.dataset.statusId;
 
             const matchesSearch = (searchTerm === '' || cardTitle.includes(searchTerm) || cardAuthors.includes(searchTerm));
             const matchesFilter = (selectedStatusId === 'all' || cardStatusId === selectedStatusId);
 
             if (matchesSearch && matchesFilter) {
-                filteredAndSearchedCardElements.push(cardElement);
+                filteredAndSearchedCardElements.push(formElement); // Push the form element
             }
         });
 
@@ -56,19 +66,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
         const endIndex = startIndex + ITEMS_PER_PAGE;
 
-        // Hide all cards initially
-        allBookCardElements.forEach(cardElement => {
-            cardElement.classList.add('invisible');
-            cardElement.classList.remove('visible');
+        // Hide all *form* elements initially
+        allBookCardForms.forEach(formElement => {
+            formElement.classList.add('invisible');
+            formElement.classList.remove('visible');
         });
 
-        // Display only the cards for the current page
+        // Display only the *form* elements for the current page
         const cardsToDisplay = filteredAndSearchedCardElements.slice(startIndex, endIndex);
 
         if (cardsToDisplay.length > 0) {
-            cardsToDisplay.forEach(cardElement => {
-                cardElement.classList.remove('invisible');
-                cardElement.classList.add('visible');
+            cardsToDisplay.forEach(formElement => { // Iterate over forms
+                formElement.classList.remove('invisible');
+                formElement.classList.add('visible');
             });
 
             // Remove "No matching books" message if present
@@ -82,9 +92,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!document.getElementById('noMatchingBooksMessage')) {
                 const noBooksMessage = document.createElement('p');
                 noBooksMessage.id = 'noMatchingBooksMessage';
-                noBooksMessage.classList.add('padding-x10');
+                // noBooksMessage.classList.add('padding-x10');
                 noBooksMessage.classList.add('no-results-message');
-                noBooksMessage.textContent = 'No matching books found.';
+
+                 if (allBookCardForms.length === 0) {
+                    noBooksMessage.textContent = 'No books found in your library. Please add books to see them here.';
+                } else {
+                    noBooksMessage.textContent = 'No matching books found.';
+                }
+
                 bookCardsContainer.appendChild(noBooksMessage);
             }
         }
@@ -127,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event Listener for the items per page dropdown
     itemsPerPageDropdown.addEventListener('change', (event) => {
-        ITEMS_PER_PAGE = parseInt(event.target.value); 
+        ITEMS_PER_PAGE = parseInt(event.target.value);
         applyFiltersAndSearch();
     });
 
@@ -152,40 +168,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const allCardForms = document.querySelectorAll('.card-form');
 
     allCardForms.forEach(form => {
-        const cardContainer = form.querySelector('.card-container'); 
+        const cardContainer = form.querySelector('.card-container');
 
-        cardContainer.addEventListener('click', function () {
-            // Retrieve all data from the data-attributes
-            const dataToPass = {
-                edition_olid: this.dataset.editionOlid,
-                work_olid: this.dataset.workOlid,
-                title: this.dataset.title,
-                publish_date: this.dataset.publishDate,
-                // Decode strings back to original format
-                description: decodeURIComponent(this.dataset.description),
-                cover_url: this.dataset.coverUrl,
-                status_id: this.dataset.statusId,
-                score: this.dataset.score,
-                authors: decodeURIComponent(this.dataset.authors),
-                languages: this.dataset.languages
-            };
+        cardContainer.addEventListener('click', function (event) {
+            if (!event.defaultPrevented) {
+                // Retrieve all data from the data-attributes
+                const dataToPass = {
+                    edition_olid: this.dataset.editionOlid,
+                    work_olid: this.dataset.workOlid,
+                    title: this.dataset.title,
+                    publish_date: this.dataset.publishDate,
+                    // Decode strings back to original format
+                    description: decodeURIComponent(this.dataset.description),
+                    cover_url: this.dataset.coverUrl,
+                    status_id: this.dataset.statusId,
+                    userReview: JSON.parse(decodeURIComponent(this.dataset.userreview || '{}')),
+                    workScore: JSON.parse(decodeURIComponent(this.dataset.workscore || '{}')),
+                    authors: decodeURIComponent(this.dataset.authors),
+                    languages: this.dataset.languages
+                };
 
-            // Remove any existing hidden inputs from previous clicks to prevent duplication
-            form.querySelectorAll('input[type="hidden"]').forEach(input => input.remove());
+                // Remove any existing hidden inputs from previous clicks to prevent duplication
+                form.querySelectorAll('input[type="hidden"]').forEach(input => input.remove());
 
-            // Create hidden input fields for each piece of data
-            for (const key in dataToPass) {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = key; // Use the actual key as the name
-                // For objects/arrays, ensure they are stringified again for submission
-                input.value = (typeof dataToPass[key] === 'object' && dataToPass[key] !== null) ?
-                    JSON.stringify(dataToPass[key]) :
-                    dataToPass[key];
-                form.appendChild(input);
+                // Create hidden input fields for each piece of data
+                for (const key in dataToPass) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = key; // Use the actual key as the name
+                    // For objects/arrays, ensure they are stringified again for submission
+                    input.value = (typeof dataToPass[key] === 'object' && dataToPass[key] !== null) ?
+                        JSON.stringify(dataToPass[key]) :
+                        dataToPass[key];
+                    form.appendChild(input);
+                }
+
+                form.submit();
             }
-
-            form.submit();
         });
 
         // Add keyboard accessibility: allow submitting the form with Enter key when card is focused

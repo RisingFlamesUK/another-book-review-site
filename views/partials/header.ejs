@@ -10,6 +10,7 @@
   </title>
   <!-- Main CSS -->
   <link rel="stylesheet" href="/styles/main.css">
+  <link rel="stylesheet" href="/styles/carousel.css">
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,16 +47,23 @@
           </a>
         </div>
       </div>
-      <div class="header-right flex vertical align-center button">
-        <div>
+      <div class="header-right">
+        <div class="flex vertical align-center justify-center">
           <% if (locals.user) { %>
-          <% if (locals.user.image) { %>
-          <img src="<%= locals.user.image %>" alt="User profile picture">
+          <div class="profile-dropdown-container">
+            <div class="profile-dropdown-toggle button">
+              <% if (locals.user.image) { %>
+              <img src="<%= locals.user.image %>" alt="User profile picture">
+              <% } else { %>
+              <i class="bi bi-person-bounding-box header-logged-in"></i>
+              <% } %>
+            </div>
+            <ul class="profile-dropdown-menu">
+              <li><a href="/logout">Logout</a></li>
+            </ul>
+          </div>
           <% } else { %>
-          <i class="bi bi-person-bounding-box header-logged-in"></i>
-          <% } %>
-          <% } else { %>
-          <a href="/login-signup" class="m-0"><i class="bi bi-person-circle header-not-logged-in"></i></a>
+          <a href="/login-signup" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a>
           <p class="m-0"><a href="/login-signup" class="m-0">Login / Sign-up</a></p>
           <% } %>
         </div>
@@ -63,5 +71,5 @@
     </div>
 
   </header>
-  <main class="container px-0">
+  <main class="container px-0 width-100">
     <div class="content-container">

@@ -1,0 +1,103 @@
+<!-- views/partials/edition-card.ejs -->
+<% 
+    //*********************************//
+    //format the parameters for display//
+    //*********************************//
+    // Title
+    let displayTitle = toTitleCase(locals.title) ||"Unknown Title";
+    
+    // Description
+    let rawDescription = locals.description;
+    let encodedDescription = encodeURIComponent(JSON.stringify(rawDescription));
+    let displayDescription = processDescription(rawDescription,200).description || '<p>No details available for this book at the moment.</p><p> Please check back later!</p>';
+    
+    // Authors
+    let rawAuthors = locals.authors || [];
+    let encodedAuthors = encodeURIComponent(JSON.stringify(rawAuthors));
+    let displayAuthors = processAuthors(rawAuthors)
+    
+    // Score & stars (user)
+    let rawUserReview = locals.userReview || [];
+    let encodedUserReview = encodeURIComponent(JSON.stringify(rawUserReview || {}));
+    const userRatingHtml = processUserScore(locals.userReview ? locals.userReview.userscore : null);
+    
+    // Score & stars (works)
+    let rawWorkScore = locals.workScore || null;
+    let workScore = null;
+    let workReviewCount = null; 
+    if (rawWorkScore && rawWorkScore.workscore !== undefined) {
+        workScore = rawWorkScore.workscore;
+        workReviewCount = rawWorkScore.reviewcount; 
+    }
+
+    let displayWorkScore = processScore(workScore, 'all');
+    let displayWorkStars = scoreToStars(workScore);
+
+    let bookCardReviewText = 'review';
+    if (workReviewCount !== 1) { 
+        bookCardReviewText += 's';
+    }
+    workReviewCount = workReviewCount !== null ? `(${workReviewCount} ${bookCardReviewText})` : '';
+
+    // Ensure it's an object for stringify, default to empty object if null
+    let encodedWorkScore = encodeURIComponent(JSON.stringify(rawWorkScore || {}));
+
+
+    // Edition User Status
+    let status = cachedStatuses.find((status) => {
+      return status.id == status_id;
+    });
+    let displayStatus = status ? status.status : 'Unknown Status';
+
+    // Languages
+    let displayLanguages ="";
+    if (languages && Array.isArray(languages)) {
+        displayLanguages = languages.join(', ');
+    }
+    else {
+        displayLanguages = languages;
+    }
+  %>
+<form class="card-form" action="/edition" method="post">
+  <div class="card-container" data-edition-olid="<%= locals.edition_olid %>" data-work-olid="<%= locals.work_olid %>" data-title="<%= displayTitle %>" data-publish-date="<%= locals.publish_date %>" data-description="<%= encodedDescription %>" data-cover-url="<%= locals.cover_url || '' %>" data-status-id="<%= locals.status_id %>" data-userreview="<%= encodedUserReview %>" data-workscore="<%= encodedWorkScore %>" data-authors="<%= encodedAuthors %>" data-languages="<%= locals.languages %>" tabindex="0">
+
+    <div class="card-content-container flex ">
+      <div class="book-cover-status flex vertical align-center justify-center">
+        <div class="book-cover-container flex justify-center align-center">
+          <% if (locals.cover_url) { %>
+          <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image" class="book-cover">
+          <% }; %>
+        </div>
+
+        <div class="book-status">
+          <p><i><%- displayStatus %></i></p>
+        </div>
+      </div>
+      <div class="book-details-container flex vertical flex-remainder">
+        <div class="book-title">
+          <h3><%= displayTitle %>
+            <% if ( displayLanguages.length > 0 ) { %>
+            <span class="book-languages"><i>(<%= displayLanguages %>)</i></span>
+            <% } %>
+          </h3>
+        </div>
+        <!--  -->
+        <div class="book-score">
+          <%- userRatingHtml %>
+        </div>
+        <div class="work-score-section book-score">
+          <p>Average Rating: <%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><i> <%- workReviewCount %></i></span></p>
+        </div>
+
+        <div class="book-description-text ">
+          <p><i><%- displayDescription %></i></p>
+        </div>
+
+        <div class="book-author">
+          <p><i><b><%= displayAuthors %></b></i></p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</form>

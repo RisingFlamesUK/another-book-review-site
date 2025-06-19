@@ -1,0 +1,24 @@
+<!-- views/partials/card-carousel.ejs -->
+
+<browse-book>
+
+  <% if (locals.cover_url) { %>
+  <a href="/works/<%= locals.work_olid %>">
+    <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image">
+  </a>
+  <% } else { %>
+  <a class="missing-cover-link" href="/works/<%= locals.work_olid %>">
+    <div class="missing-cover-container">
+      <img src="/assets/images/book placeholder.webp" alt="<%= title %> Book Cover Image">
+
+      <div class="missing-cover-overlay flex vertical align-center">
+        
+        <p class="missing-cover-title"><%= locals.title %></p>
+        <p class="missing-cover-text"><i>(Cover unavailable)</i></p>
+
+      </div>
+    </div>
+  </a>
+  <% } %>
+
+</browse-book>

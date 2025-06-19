@@ -15,7 +15,7 @@ https://openlibrary.org/developers/api
 ---------
 Using the code
 ---------
-This site uses node.js and a postgres database. You will need both.
+This site was created using node and a postgres v17 database. You will need both.
 I used node.js version v24.1.0, which was the latest at the time of writing. Using other version may yield unexpected results.
 
 1. Create a file in root called .env
@@ -51,7 +51,7 @@ Objectives
 - Demonstrate ability to Create Read Update and Delete data in a PostgreSQL Database to persist data.
 
 ---------
-Requirements
+Project Requirements
 ---------
 1. Database Persistance
 Persist data using a PostgreSQL database.

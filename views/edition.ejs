@@ -1,1 +1,103 @@
-<!-- views/edition.ejs -->
+<%
+    //*********************************//
+    //format the parameters for display//
+    //*********************************//
+    // Title
+    let displayTitle = toTitleCase(edition.title) || "Unknown Title";
+
+    // Description
+    let rawDescription = edition.description;
+    let displayDescription = processDescription(rawDescription).description || '<p>No details available for this book at the moment.</p><p> Please check back later!</p>';
+
+    // Authors
+    let rawAuthors = edition.authors || [];
+    let displayAuthors = processAuthors(rawAuthors);
+
+
+    // Score & stars (user)
+    // Get the user's score from the userReview object, or null if no review exists
+    let userScore = locals.edition.userReview ? locals.edition.userReview.userscore : null;
+
+    // Score & stars (work)
+    let rawWorkScore = locals.edition.workScore || null;
+    let workScore = null;
+    let workReviewCount = null;
+    if (rawWorkScore && rawWorkScore.workscore !== undefined) {
+        workScore = rawWorkScore.workscore;
+        workReviewCount = rawWorkScore.reviewcount;
+    }
+    let displayWorkScore = processScore(workScore,"all");
+    let displayWorkStars = scoreToStars(workScore);
+    
+    let reviewText = 'review';
+    if (workReviewCount !== 1) {
+        reviewText += 's';
+    }
+    let displayWorkReviewCountText = workReviewCount !== null ? `(${workReviewCount} ${reviewText})` : '';
+
+    let status = cachedStatuses.find((status) => {
+      return status.id == edition.status_id;
+    });
+    let displayStatus = status ? status.status : 'Unknown Status';
+
+    // Languages
+    let displayLanguages = "";
+    if (edition.languages && Array.isArray(edition.languages)) {
+        displayLanguages = edition.languages.join(', ');
+    }
+    else {
+        displayLanguages = edition.languages;
+    }
+%>
+<%- include("partials/header.ejs") %>
+<div id="edition-content-container" class="flex justify-center">
+    <div id="edition-content" class="flex vertical content-background width-100">
+        <div id="edition-title" class="flex vertical align-center width-100">
+            <h2><%= displayTitle %></h2>
+            <p id="edition-authors"> <%= displayAuthors %></p>
+        </div>
+
+        <div id="edition-details" class="flex">
+
+            <div id="edition-cover-user-info" class="flex vertical justify-center align-center">
+                <div class="edition-cover-container flex justify-center align-center">
+                    <% if (locals.edition.cover_url) { %>
+                    <img src="<%= edition.cover_url %>" alt="<%= displayTitle %> Book Cover Image" class="edition-cover">
+                    <% }; %>
+                </div>
+
+                <% if (locals.user) { %>
+                <div id="edition-user-score-section">
+                    <div class="user-rating-wrapper"
+                         data-edition-olid="<%= edition.edition_olid %>"
+                         data-work-olid="<%= edition.work_olid %>">
+                        <%- processUserScore(userScore) %>
+                    </div>
+                </div>
+
+                <div id="user-status-dropdown">
+                    </div>
+                <% }; %>
+            </div>
+
+            <div id="edition-text" class="flex vertical align-center justify-center">
+                <div id="edition-description">
+                    <h3>About</h3><br>
+                    <%- displayDescription %>
+                </div>
+
+                <div class="flex justify-right width-100">
+                    <div id="edition-work-score">
+                        <p>Overall: &nbsp; <%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><%= displayWorkReviewCountText %></span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<%- include("partials/footer.ejs") %>
+
+<% if (locals.user) { %>
+<script src="/js/user-stars.js"></script>
+<% } %>

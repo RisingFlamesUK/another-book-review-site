@@ -45,6 +45,11 @@
               <label for="signup-password">Password:</label>
               <input type="password" id="signup-password" name="password" required>
             </div>
+            <div class="form-group">
+              <label for="signup-confirm-password">Confirm Password:</label>
+              <input type="password" id="signup-confirm-password" name="confirmPassword" required>
+              <p id="password-match-error" class="error-message" style="display: none; color: red;">Passwords do not match.</p>
+            </div>
             <button id="signup-button" type="submit">Sign Up</button>
             <div id="signup-status-message">
               <% if (signupError) { %>
@@ -59,5 +64,4 @@
 </div>
 
 <script src="/js/login-signup.js" defer></script>
-<!-- Footer -->
 <%- include("partials/footer.ejs") %>

@@ -1,0 +1,218 @@
+.browse-books-content {
+    max-width: 1400px;
+    justify-self: center;
+}
+
+ 
+.carousel-holder {
+ padding: 20px 30px;
+}
+
+.carousel-title {
+    padding: 5px;
+    margin-bottom: 10px;
+    width: fit-content;
+    min-width: 100px;
+    text-align: center;
+    border-radius: 10px;
+    border: solid black 1px;
+}
+
+.browse-card-holder-container {
+    width: 100%;
+    position: relative;
+}
+
+.missing-cover-container {
+    position: relative;
+}
+
+.missing-cover-overlay {
+    position: absolute;
+    z-index: 10;
+    top: 15px;
+    left: 15px;
+    width: 140px;
+    text-align: center;
+}
+
+.missing-cover-text {
+    background-color: white;
+    color: black;
+    font-size: small;
+    width: fit-content;
+    border-radius: 5px;
+    padding: 1px 2px; 
+}
+
+.missing-cover-title {
+    background-color: white;
+    color: black;
+    width: fit-content;
+    padding: 1px 2px; 
+    border-radius: 5px;
+
+}
+
+#trending-title {
+    background: linear-gradient(164deg, rgba(131, 58, 180, 1) 0%, rgba(253, 29, 29, 1) 50%, rgba(252, 176, 69, 1) 100%);
+    color: white;
+}
+
+#fiction-title {
+    background: linear-gradient(90deg,rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+}
+
+#non-fiction-title {
+    background: linear-gradient(308deg,rgba(2, 0, 36, 1) 0%, rgba(9, 9, 121, 1) 35%, rgba(0, 212, 255, 1) 100%);
+    color: white;
+}
+
+@layer reel {
+
+    .carousel {
+        --items: 15;
+        --carousel-duration: 140s;
+        --carousel-padding: 20px;
+
+
+        @media (width > 600px) {
+            --carousel-duration: 100s;
+        }
+
+        --carousel-width: min(calc(100% - 2 * var(--carousel-padding)));
+        /* note - it will "break" if it gets too wide and there aren't enough items */
+        --carousel-item-width: 170px;
+        --carousel-item-height: 220px;
+        --carousel-item-gap: 30px;
+        --carousel-item-padding: 3px;
+
+        --clr-cta: rgb(0, 132, 209);
+
+        position: relative;
+        width: var(--carousel-width);
+        height: var(--carousel-item-height);
+        overflow: clip;
+        padding-left: var(--carousel-padding);
+        padding-right: var(--carousel-padding);
+
+        &[mask] {
+            /* fade out on sides */
+            mask-image: linear-gradient(to right,
+                    transparent,
+                    black 10% 90%,
+                    transparent);
+        }
+
+        &[reverse]>browse-book {
+            animation-direction: reverse;
+        }
+
+        /* hover pauses animation */
+        &:hover>browse-book {
+            animation-play-state: paused;
+        }
+    }
+
+    .carousel>browse-book {
+        position: absolute;
+        top: 0;
+        left: calc(100% - var(--carousel-item-gap));
+        width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
+        height: calc(var(--carousel-item-height) - 2 * var(--carousel-item-padding));
+        max-height: 300px;
+        display: grid;
+        grid-template-rows: calc(var(--carousel-item-height));
+        gap: 0.25rem;
+        /* border: 1px solid light-dark(rgba(0 0 0 / 0.25), rgba(255 255 255 / 0.15)); */
+
+        /* padding-block-end: 1rem; */
+        padding: var(--carousel-item-padding);
+        border-radius: 10px;
+        /* background: light-dark(rgba(70, 45, 14, 0.527), rgba(255 255 255 / 0.05)); */
+        /* color: light-dark(rgb(49, 65, 88), white); */
+
+        /* animation */
+        will-change: transform;
+        animation-name: marquee;
+        animation-duration: var(--carousel-duration);
+        animation-timing-function: linear;
+        animation-iteration-count: infinite;
+        animation-delay: calc(var(--carousel-duration) / var(--items) * 1 * var(--i) * -1);
+
+        &:nth-child(1) {
+            --i: 0;
+        }
+
+        &:nth-child(2) {
+            --i: 1;
+        }
+
+        &:nth-child(3) {
+            --i: 2;
+        }
+
+        &:nth-child(4) {
+            --i: 3;
+        }
+
+        &:nth-child(5) {
+            --i: 4;
+        }
+
+        &:nth-child(6) {
+            --i: 5;
+        }
+
+        &:nth-child(7) {
+            --i: 6;
+        }
+
+        &:nth-child(8) {
+            --i: 7;
+        }
+
+        &:nth-child(9) {
+            --i: 8;
+        }
+
+        &:nth-child(10) {
+            --i: 9;
+        }
+
+        &:nth-child(11) {
+            --i: 10;
+        }
+
+        &:nth-child(12) {
+            --i: 11;
+        }
+
+        &:nth-child(13) {
+            --i: 12;
+        }
+
+        &:nth-child(14) {
+            --i: 13;
+        }
+
+        &:nth-child(15) {
+            --i: 14;
+        }
+    }
+
+    .carousel img {
+        width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
+        height: calc(var(--carousel-item-height) - 2 * var(--carousel-item-padding));
+        object-fit: contain;
+        background-color: white;
+
+        /* border-radius: 10px 10px 0 0; */
+    }
+
+    @keyframes marquee {
+        100% {
+            transform: translateX(calc((var(--items) * (var(--carousel-item-width) + var(--carousel-item-gap))) * -1));
+        }
+    }
+}

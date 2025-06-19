@@ -2,12 +2,19 @@
 import {
     database
 } from './database.js';
+import * as fh from './file-handler.js'
 import * as ol from './ol-handler.js'
 import * as utils from './utils.js'
-export let cachedStatuses = []; // Will be populated by initDbAndCache
-export let cachedSubjects = []; // Will be populated by initDbAndCache
-export let cachedLanguages = []; // Will be populated by initDbAndCache
-export let cachedOlids = {}; // Will be populated by initDbAndCache
+export let cachedStatuses = [];
+export let cachedSubjects = new Map();
+export let cachedLanguages = new Map();
+export let cachedOlids = {
+    editions: new Set(),
+    works: new Set(),
+    authors: new Set()
+};
+export let cachedTrending = null;
+export let cachedBrowseSubjects = {};
 
 //* --------------------------- *//
 //*       User functions        *//
@@ -126,6 +133,92 @@ export async function findUserPassword(username) {
 //* --------------------------- *//
 //*   Book (select) functions   *//
 //* --------------------------- *//
+/**
+ * @typedef {Object} OpenLibraryWorkData
+ * @property {Array<Object>} works - An array of work objects, each representing a book.
+ * // You might want to define the structure of a single 'work object' more precisely
+ * // if you have a consistent schema for them (e.g., title, author, cover_i, etc.).
+ */
+
+/**
+ * Retrieves the latest cached trending books data from the database.
+ * This function queries the `cached_trending_data` table and returns the `data`
+ * from the most recently updated entry.
+ *
+ * @returns {OpenLibraryWorkData|null} The trending books data as a JSON object,
+ * or `null` if no trending data is found in the cache.
+ * @throws {Error} Throws an error if there's a problem during the database query.
+ * @async
+ */
+export async function getTrendingBooksReelData(period = undefined) {
+    // Response:
+    //     
+    //     JSON: Stored trending books
+    //     
+    // Throws an error on failure during database operations
+    try {
+        let whereClause = '';
+        if (period) {
+            whereClause = 'WHERE period = $1'
+        }
+        const query = `
+            SELECT 
+                *
+            FROM cached_trending_data
+            ${whereClause}
+            ORDER BY last_updated DESC;
+        `;
+        const data = [period];
+        const result = await database.query(query, data);
+
+        return result.rows.length > 0 ? result.rows : null;
+
+    } catch (error) {
+        console.error(`Error retrieving trending data from database`, error);
+        throw new Error(`Database error trending data: ${error.message}`);
+    }
+}
+
+/**
+ * Retrieves the latest cached subject-specific book data from the database.
+ * This function queries the `cached_subject_data` table for a given subject and language,
+ * returning the `data` from the most recently updated entry.
+ *
+ * @param {string} subject - The name of the subject to retrieve data for (e.g., 'fiction', 'history').
+ * @param {string} [language='eng'] - The language of the books (e.g., 'eng' for English).
+ * Defaults to 'eng' if not provided.
+ * @returns {OpenLibraryWorkData|null} The subject-specific books data as a JSON object,
+ * or `null` if no data is found for the specified subject and language.
+ * @throws {Error} Throws an error if there's a problem during the database query.
+ * @async
+ */
+export async function getSubjectsReelData(subject, language) {
+    // Response:
+    //     
+    //     JSON: Stored trending books
+    //     
+    // Throws an error on failure during database operations
+    language = language || "eng";
+    try {
+        const query = `
+            SELECT 
+                data, last_updated
+            FROM cached_subject_data
+            WHERE subject_name = $1 AND language = $2
+            ORDER BY last_updated DESC
+            LIMIT 1;
+        `;
+        const data = [subject, language];
+        const result = await database.query(query, data);
+
+        return result.rows.length > 0 ? result.rows[0] : null;
+
+    } catch (error) {
+        console.error(`Error retrieving subject data from database for subject: ${subject}, language: ${language}`, error);
+        throw new Error(`Database error retrieving subject data: ${error.message}`);
+    }
+}
+
 // getEdition:
 export async function getEdition(edition_olid) {
     // Response:
@@ -166,6 +259,7 @@ export async function getEdition(edition_olid) {
 // getUserBooks:
 export async function getUserBooks(user_id) {
     // Response:
+    //      An array of book objects, each with:
     //     {
     //     "user_id": user_id,
     //     "edition_olid": edition_olid,
@@ -177,44 +271,63 @@ export async function getUserBooks(user_id) {
     //     "status_id": status_id,
     //     "authors": [authors]   //output from getEditionAuthors
     //      "languages": [languages]  //output from getEditionLanguages
+    //      "userReview": { userreview: string, userscore: number } //output from getUserReviews
+    //      "workScore": { workscore: number, reviewcount: number } //output from getWorkScore
     //     }
     // Throws an error on failure during database operations
     // Returns null when editions for that user are not found
     try {
-        const query = `
-            SELECT 
-                ub.user_id, 
-                ub.edition_olid, 
-                be.work_olid, 
-                be.title, 
-                be.publish_date, 
-                be.description, 
-                be.cover_url, 
-                ub.status_id 
-            FROM users_books AS ub
-            JOIN book_editions AS be ON ub.edition_olid = be.edition_olid
-            WHERE ub.user_id = $1;
-        `;
-        const data = [user_id];
-        const result = await database.query(query, data);
-        
-        const booksFromDb = result.rows;
+        const [booksResult, userReviewsResult] = await Promise.all([
+            database.query(`
+                SELECT
+                    ub.user_id,
+                    ub.edition_olid,
+                    be.work_olid,
+                    be.title,
+                    be.publish_date,
+                    be.description,
+                    be.cover_url,
+                    ub.status_id
+                FROM users_books AS ub
+                JOIN book_editions AS be ON ub.edition_olid = be.edition_olid
+                WHERE ub.user_id = $1;
+            `, [user_id]),
+            getUserReviews(user_id)
+        ]);
+
+        const booksFromDb = booksResult.rows;
+        const userReviews = userReviewsResult || [];
+
         // If no books are found, return null immediately
         if (booksFromDb.length === 0) {
             return null;
         }
 
-        // Create an array of promises for fetching authors AND languages for each book in parallel
+        const reviewsByEditionOlid = userReviews.reduce((acc, review) => {
+            acc[review.edition_olid] = {
+                userreview: review.userreview,
+                userscore: review.userscore
+            };
+            return acc;
+        }, {});
+
+        // Create an array of promises for fetching authors, languages, and work scores for each book in parallel
         const bookDetailsPromises = booksFromDb.map(async (book) => {
-            const [bookAuthors, bookLanguages] = await Promise.all([
+            const [bookAuthors, bookLanguages, workScore] = await Promise.all([
                 getEditionAuthors(book.edition_olid),
-                getEditionLanguages(book.edition_olid)
+                getEditionLanguages(book.edition_olid),
+                getWorkScore(book.work_olid) // Fetch work score in parallel
             ]);
+
+            // Add review and score from pre-fetched reviews
+            const userReviewAndScore = reviewsByEditionOlid[book.edition_olid] || null;
 
             return {
                 ...book,
                 authors: bookAuthors,
-                languages: bookLanguages // Add the languages here
+                languages: bookLanguages,
+                userReview: userReviewAndScore, // Add the user's review and score for this specific book
+                workScore: workScore // Add the work's aggregate score
             };
         });
 
@@ -291,12 +404,20 @@ export async function getWorkSubjects(work_olid) {
         const data = [work_olid];
         const result = await database.query(query, data);
 
-        // Map subject_id to status string using the cachedSubjects
+        // Map subject_id to subject name using the cachedSubjects Map
         const workSubjectsWithSubjectNames = result.rows.map(book => {
-            const subject = cachedSubjects.find(s => s.id === book.subject_id);
+            let foundSubject = null;
+            // Iterate over the values of the cachedSubjects Map to find by ID
+            for (const subject of cachedSubjects.values()) {
+                if (subject.id === book.subject_id) {
+                    foundSubject = subject;
+                    break;
+                }
+            }
+
             return {
                 ...book,
-                subject: subject.name ? subject.name : 'Unknown', // Handle case where subject name might not be found (shouldn't happen if data is clean)
+                subject: foundSubject ? foundSubject.name : 'Unknown', // Use foundSubject.name or 'Unknown'
                 subject_id: undefined
             };
         });
@@ -345,27 +466,41 @@ export async function getEditionLanguages(edition_olid) {
 }
 
 // getUserReviews:
-export async function getUserReviews(user_id) {
-    // Response:
+export async function getUserReviews(user_id, edition_olid = undefined) {
+    // edition_olid is optional
+    // Returns array of each edition's reviews in this format:
     //     {
     //     "edition_olid": edition_olid,
     //     "review_id": review_id,
-    //      "review": review,
-    //     "score": score
+    //      "userreview": review,
+    //     "userscore": score
+    //      }
     // Throws an error on failure during database operations
     // Returns null when the user review is not found
+    let edition_text = ''
+    // if (edition_olid) {
+    //     edition_text = ' AND ub.edition_olid = $2'
+    //     edition_data = ', ' + edition_olid
+    // }
     try {
-        const query = `
+        let query = `
             SELECT
-                ub.edition_olid,
-                br.id as review_id, 
-                br.review,
-                br.score
-            FROM users_books AS ub
-            JOIN book_review AS br ON ub.id = br.user_book_id
-            WHERE ub.user_id = $1;
+            ub.edition_olid,
+            br.id as review_id,
+            br.review as userreview,
+            br.score as userscore
+        FROM users_books AS ub
+        JOIN book_review AS br ON ub.id = br.user_book_id
+        WHERE ub.user_id = $1
         `;
         const data = [user_id];
+        if (edition_olid) {
+            query += ' AND ub.edition_olid = $2';
+            data.push(edition_olid);
+        }
+
+        query += ';';
+
         const result = await database.query(query, data);
 
         return result.rows || null;
@@ -376,193 +511,172 @@ export async function getUserReviews(user_id) {
     }
 }
 
+/**
+ * Retrieves the work score and review count for a given Open Library Work ID (work_olid) from the database.
+ *
+ * @param {string} work_olid - The Open Library ID of the work (e.g., "OL12345W").
+ * @param {object} [client=database] - Optional. The database client to use for the query. Defaults to the global `database` object.
+ * @returns {Promise<Object | null>} A promise that resolves to an object containing the work score and review count, or `null` if the work score is not found in the database.
+ * The returned object has the following structure:
+ * - `work_olid`: {string} The Open Library ID of the work.
+ * - `workscore`: {number} The calculated score for the work.
+ * - `reviewcount`: {number} The total number of reviews for the work.
+ * @throws {Error} If a failure occurs during the database operation.
+ */
+export async function getWorkScore(work_olid, client = database) {
+    // Response:
+    //     {
+    //     "work_olid": work_olid,
+    //     "workscore": score,
+    //     "reviewcount": review_count
+    // Throws an error on failure during database operations
+    // Returns null when the work score is not found
+    try {
+        const query = `
+            SELECT
+                ws.work_olid,
+                ws.score as workscore,
+                ws.review_count as reviewcount
+            FROM works_scores AS ws
+            WHERE ws.work_olid = $1;
+        `;
+        const data = [work_olid];
+        const result = await client.query(query, data);
+
+        return result.rows[0] || null;
+
+    } catch (error) {
+        console.error(`Error getting work (${work_olid})'s scores from database:`, error);
+        throw new Error(`Database error getting work (${work_olid})'s scores: ${error.message}`);
+    }
+}
+
 //* --------------------------- *//
-//*   Book (insert) functions   *//
-//*   (Data from Open Library)  *//
+//*    User Book (edit/add)     *//
+//*    functions                *//
 //* --------------------------- *//
-
-
-export async function putOlWork(work_olid, title, first_publication_date) {
+export async function setUserScore(user_id, edition_olid, work_olid, score) {
+    // Response: true if success | error if failed
+    let client;
     try {
-        let query = `
-     INSERT INTO book_works (work_olid, title, first_publication_date)
-     VALUES ($1, $2, $3)
-     RETURNING work_olid;       
-    `
-        let data = [work_olid, title, first_publication_date]
+        client = await database.connect();
+        await client.query('BEGIN');
+        // 1. Check if user already scored this book
+        let oldScore = 0;
+        const newScore = score;
+        let addNewUserScoreQuery = '';
+        let addNewUserScoredata = []
 
-        const Result = await database.query(query, data);
+        const oldUserScoreResult = await client.query(`
+            SELECT
+                ub.edition_olid,
+                br.id as review_id,
+                br.score
+            FROM users_books AS ub
+            JOIN book_review AS br ON ub.id = br.user_book_id
+            WHERE ub.user_id = $1 AND ub.edition_olid = $2;
+        `, [user_id, edition_olid]);
 
-        return Result.rows[0]?.work_olid || null; // Return the work_olid if available otherwise null indicates failure
+        if (oldUserScoreResult.rows.length > 0) {
+            // 2. Update the score if already scored
+            oldScore = oldUserScoreResult.rows[0].score
+            let review_id = oldUserScoreResult.rows[0].review_id
 
-    } catch (error) {
-        console.error(`Error writing work ${work_olid} to database:`, error);
-        throw new Error(`Database error storing work ${work_olid}: ${error.message}`);
-    }
-}
+            // store the query and data for submission as the promise All
+            addNewUserScoreQuery = `UPDATE book_review SET score = $1 WHERE id = $2 RETURNING *;`;
+            addNewUserScoredata = [newScore, review_id];
 
-export async function putOlAuthor(author_olid, name, bio, birth_date, death_date, pic_url) {
-    try {
-        let query = `
-     INSERT INTO authors (author_olid, name, bio, birth_date, death_date, pic_url)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING author_olid;             
-    `
-        let data = [author_olid, name, bio, birth_date, death_date, pic_url]
+        } else {
+            // 3. Add score if not already scored
+            // Get the user_book_id
+            const userBookIdResult = await client.query(`
+            SELECT
+                ub.id
+            FROM users_books AS ub
+            WHERE ub.user_id = $1 AND ub.edition_olid = $2;
+        `, [user_id, edition_olid]);
 
-        const Result = await database.query(query, data);
+            if (!userBookIdResult.rows[0]) {
+                console.error(`User-book relationship not found for user_id: ${user_id}, edition_olid: ${edition_olid}`);
+                throw new Error(`User-book relationship not found for user_id: ${user_id}, edition_olid: ${edition_olid}. Cannot add review.`);
+            }
 
-        return Result.rows[0]?.author_olid || null; // Return the author_olid if available otherwise null indicates failure
+            let user_book_id = userBookIdResult.rows[0].id;
 
-    } catch (error) {
-        console.error(`Error writing author ${author_olid} to database:`, error);
-        throw new Error(`Database error storing author ${author_olid}: ${error.message}`);
-    }
-}
-
-export async function putOlEdition(edition_olid, work_olid, title, description = null, publish_date, cover_url) {
-    try {
-        let query = `
-     INSERT INTO book_editions (edition_olid, work_olid, title, description, publish_date, cover_url)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING edition_olid;             
-    `
-        let data = [edition_olid, work_olid, title, description, publish_date, cover_url]
-
-        const Result = await database.query(query, data);
-
-        return Result.rows[0]?.edition_olid || null; // Return the edition_olid if available otherwise null indicates failure
-
-    } catch (error) {
-        console.error(`Error writing edition ${edition_olid} to database:`, error);
-        throw new Error(`Database error storing edition ${edition_olid}: ${error.message}`);
-    }
-}
-
-export async function putOlSubject(name, type) {
-    try {
-        let query = `
-     INSERT INTO subjects (name, type)
-     VALUES ($1, $2)
-     RETURNING id;             
-    `
-        let data = [name, type]
-
-        const Result = await database.query(query, data);
-
-        return Result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
-
-    } catch (error) {
-        // Handle unique constraint violation specifically if needed
-        if (error.code === '23505') { // PostgreSQL unique violation error code
-            console.warn(`Subject '${name}' already exists in database. Fetching existing ID.`);
-            const existingSubject = await database.query('SELECT id FROM subjects WHERE name = $1', [name]);
-            return existingSubject.rows[0]?.id || null;
+            addNewUserScoreQuery = `INSERT INTO book_review (user_book_id, score) VALUES ($1, $2) RETURNING *;`;
+            addNewUserScoredata = [user_book_id, newScore];
         }
-        console.error(`Error writing subject ${name} to database:`, error);
-        throw new Error(`Database error storing subject ${name}: ${error.message}`);
-    }
-}
 
-export async function putOlWorkSubject(work_olid, subject_id) {
-    try {
-        let query = `
-     INSERT INTO works_subjects (work_olid, subject_id)
-     VALUES ($1, $2)
-     RETURNING id;             
-    `
-        let data = [work_olid, subject_id]
+        // 4.Update work score / review count
+        let scoreChange = newScore - oldScore;
 
-        const Result = await database.query(query, data);
+        let addNewWorkScoreQuery = '';
+        let addNewWorkScoreData = []
+        const workScoreResult = await getWorkScore(work_olid, client);
 
-        return Result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
+        if (workScoreResult) {
+            const currentWorkScore = workScoreResult.workscore;
+            let review_count = workScoreResult.reviewcount;
+
+            const newWorkScore = currentWorkScore + scoreChange;
+
+            if (oldScore === 0) { // Only increment review_count if it's a new review
+                review_count++;
+            }
+
+            addNewWorkScoreQuery = `UPDATE works_scores SET score = $1, review_count =$2 WHERE work_olid = $3 RETURNING *;`;
+            addNewWorkScoreData = [newWorkScore, review_count, work_olid];
+        } else {
+            const newWorkScore = scoreChange; // For a new work score, it's just the current user's score
+            const review_count = 1; // It's the first review for this work
+            addNewWorkScoreQuery = `INSERT INTO works_scores (score, review_count, work_olid) VALUES ($1, $2, $3) RETURNING *;`;
+            addNewWorkScoreData = [newWorkScore, review_count, work_olid];
+        }
+        // use a promise ALL to run the updates in parallel
+        const [updateUserEditionResult, updateWorkScoreResult] = await Promise.all([
+            client.query(addNewUserScoreQuery, addNewUserScoredata),
+            client.query(addNewWorkScoreQuery, addNewWorkScoreData)
+        ]);
+
+        if (!updateUserEditionResult.rows[0] || !updateWorkScoreResult.rows[0]) {
+            console.error(`Error updating user score ${user_id}:${newScore} in database:`, error);
+            throw new Error(`Database error updating user score ${user_id}-${newScore}: ${error.message}`);
+        }
+        await client.query('COMMIT'); // Commit transaction if all successful
+
+        return {
+            newUserScore: updateUserEditionResult.rows[0].score,
+            newWorkScore: updateWorkScoreResult.rows[0].score,
+            newWorkReviewCount: updateWorkScoreResult.rows[0].review_count
+        }; // Indicate success
 
     } catch (error) {
-        if (error.code === '23505') { // PostgreSQL unique violation error code
-            console.warn(`Work-subject association ${work_olid}:${subject_id} already exists.`);
-            return true; // Indicate it's "successful" because it already exists
+        if (client) {
+            await client.query('ROLLBACK'); // Rollback on error
         }
-        console.error(`Error writing work:subject ${work_olid}:${subject_id} to database:`, error);
-        throw new Error(`Database error storing work-subject association ${work_olid}:${subject_id}: ${error.message}`);
+        console.error(`Error in setUserScore for user (${user_id}), edition (${edition_olid}):`, error);
+        throw new Error(`Database error setting user score: ${error.message}`);
+    } finally {
+        if (client) {
+            client.release(); // Release the client back to the pool
+        }
     }
+
 }
 
-export async function putOlAuthorBook(author_olid, edition_olid) {
-    try {
-        let query = `
-     INSERT INTO authors_books (author_olid, edition_olid)
-     VALUES ($1, $2)
-     RETURNING id;             
-    `
-        let data = [author_olid, edition_olid]
-
-        const Result = await database.query(query, data);
-
-        return Result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
-
-    } catch (error) {
-        // If it's a unique constraint violation (author already linked to this book)
-        if (error.code === '23505') { // PostgreSQL unique violation error code
-            console.warn(`Author-edition association ${author_olid}:${edition_olid} already exists.`);
-            return true; // Indicate it's "successful" because it already exists
-        }
-        console.error(`Error writing author:edition ${author_olid}:${edition_olid} to database:`, error);
-        throw new Error(`Database error storing author-edition association ${author_olid}:${edition_olid}: ${error.message}`);
-
-    }
-}
-
-export async function putOlLanguage(language, key) {
-    try {
-        let query = `
-     INSERT INTO languages (language, key)
-     VALUES ($1, $2)
-     RETURNING id;             
-    `
-        let data = [language, key]
-
-        const Result = await database.query(query, data);
-
-        return Result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
-
-    } catch (error) {
-        // If it's a unique constraint violation (author already linked to this book)
-        if (error.code === '23505') { // PostgreSQL unique violation error code
-            console.warn(`language ${language} already exists.`);
-            return true; // Indicate it's "successful" because it already exists
-        }
-        console.error(`Error writing language ${language} to database:`, error);
-        throw new Error(`Database error storing language ${language}: ${error.message}`);
-
-    }
-}
-
-export async function putOlEdition_Language(edition_olid, language_id) {
-    try {
-        let query = `
-     INSERT INTO editions_languages (edition_olid, language_id)
-     VALUES ($1, $2)
-     RETURNING *;             
-    `
-        let data = [edition_olid, language_id]
-
-        const Result = await database.query(query, data);
-
-        return Result.rows[0] || null; // Return the id if available otherwise null indicates failure
-
-    } catch (error) {
-        // If it's a unique constraint violation (edition already linked to this language)
-        if (error.code === '23505') { // PostgreSQL unique violation error code
-            console.warn(`Edition-language association ${edition_olid}:${language_id} already exists.`);
-            return true; // Indicate it's "successful" because it already exists
-        }
-        console.error(`Error writing edition-language ${edition_olid}:${language_id} to database:`, error);
-        throw new Error(`Database error storing edition-language association ${edition_olid}:${language_id}: ${error.message}`);
-
-    }
-}
-
-export async function putUserEdition(user_id, edition_olid, status_id = 1) {
+/**
+ * Adds a new edition to a user's collection in the database.
+ * If the user already has the edition, it will not be re-added, and the function will return null.
+ *
+ * @async
+ * @param {string} user_id - The unique identifier of the user.
+ * @param {string} edition_olid - The Open Library ID (OLID) of the edition to add.
+ * @param {number} [status_id=1] - The initial status ID for the book (default is 1).
+ * @returns {Promise<number | null>} A promise that resolves to the ID of the newly inserted user-edition record if successful,
+ * or `null` if the edition already exists in the user's collection (due to a unique constraint).
+ * @throws {Error} Throws an error if a database operation fails for reasons other than a unique constraint violation.
+ */
+export async function postUserEdition(user_id, edition_olid, status_id = 1) {
     try {
         let query = `
      INSERT INTO users_books (user_id, edition_olid, status_id)
@@ -571,9 +685,9 @@ export async function putUserEdition(user_id, edition_olid, status_id = 1) {
     `
         let data = [user_id, edition_olid, status_id]
 
-        const Result = await database.query(query, data);
+        const result = await database.query(query, data);
 
-        return Result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
+        return result.rows[0]?.id || null; // Return the id if available otherwise null indicates failure
 
     } catch (error) {
         // If it's a unique constraint violation (user already has this book)
@@ -586,7 +700,16 @@ export async function putUserEdition(user_id, edition_olid, status_id = 1) {
     }
 }
 
-
+/**
+ * Checks if a specific edition already exists in a user's book collection in the database.
+ *
+ * @async
+ * @param {string} user_id - The unique identifier of the user.
+ * @param {string} edition_olid - The Open Library ID (OLID) of the edition to check.
+ * @returns {Promise<Object | null>} A promise that resolves to the database record object for the user-edition
+ * (e.g., `{ id: number }`) if found, or `null` if the edition is not in the user's collection.
+ * @throws {Error} Throws an error if a database operation fails.
+ */
 export async function checkUserBook(user_id, edition_olid) {
     try {
         const query = `
@@ -601,6 +724,1330 @@ export async function checkUserBook(user_id, edition_olid) {
     } catch (error) {
         console.error(`Error checking user book existence for user ${user_id}, edition ${edition_olid}:`, error);
         throw new Error(`Database error checking user book: ${error.message}`);
+    }
+}
+
+
+//* --------------------------- *//
+//*   Book (post) functions     *//
+//*   (Data from Open Library)  *//
+//* --------------------------- *//
+
+
+/**
+ * Inserts a new Open Library work into the database.
+ * This function includes validation for its input parameters using `validateOlid` for `work_olid`.
+ * If the work (identified by `work_olid`) already exists, this function will typically
+ * cause a unique constraint violation if `work_olid` is a primary key or has a unique constraint.
+ * In a more robust system, consider using `ON CONFLICT` clause in the SQL query for updates or silent skips.
+ *
+ * @param {string} work_olid - The Open Library ID of the work (e.g., "OL123W"). Must be a valid OLID of type 'work'.
+ * @param {string} title - The title of the work. Must be a non-empty string.
+ * @param {string | null} first_publication_date - The first publication date of the work (can be null or a non-empty string).
+ * @returns {Promise<string | null>} A promise that resolves to the `work_olid` of the newly inserted work
+ * or `null` if the insertion fails (e.g., due to an empty result set from the DB).
+ * @throws {Error} Throws an error if input validation fails or if the database operation fails.
+ */
+export async function postOlWork(work_olid, title, first_publication_date) {
+    // Input validation
+    try {
+        const type = utils.validateOlid(work_olid);
+        if (type !== 'work') {
+            throw new Error(`Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`postOlWork: Invalid work_olid format. ${error.message}`);
+    }
+
+    if (typeof title !== 'string' || title.trim() === '') {
+        throw new Error('postOlWork: Invalid title. Must be a non-empty string.');
+    }
+    if (first_publication_date !== null && typeof first_publication_date !== 'string') {
+        throw new Error('postOlWork: Invalid first_publication_date. Must be a string or null.');
+    }
+
+    try {
+        let query = `
+            INSERT INTO book_works (work_olid, title, first_publication_date)
+            VALUES ($1, $2, $3)
+            RETURNING work_olid;
+        `;
+        let data = [work_olid, title, first_publication_date];
+
+        const result = await database.query(query, data);
+
+        if (result.rows[0]?.work_olid) {
+            updateCache("works", result.rows[0].work_olid);
+        }
+
+        console.log(`... Added works data to database and cache: ${work_olid}`);
+        return result.rows[0]?.work_olid || null; // Return the work_olid if available otherwise null indicates failure
+
+    } catch (error) {
+        console.error(`Error writing work ${work_olid} to database:`, error);
+        throw new Error(`Database error storing work ${work_olid}: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} OlAuthor - Represents the structure of an Open Library author object for database insertion.
+ * @property {string} author_olid - The Open Library ID for the author (e.g., "OL123A"). Must be a valid OLID format.
+ * @property {string} name - The primary name of the author.
+ * @property {string | null} [bio] - The author's biography (optional, defaults to null if not provided).
+ * @property {string | null} [birth_date] - The author's birth date (optional, defaults to null if not provided).
+ * @property {string | null} [death_date] - The author's death date (optional, defaults to null if not provided).
+ * @property {string | null} [pic_url] - URL to the author's picture (optional, defaults to null if not provided).
+ */
+
+/**
+ * Inserts one or more Open Library author objects into the database in a batch,
+ * and updates the in-memory cache for successfully added authors.
+ * This function handles input validation and leverages `ON CONFLICT DO NOTHING`
+ * to efficiently skip authors that already exist in the database without causing errors.
+ *
+ * @param {OlAuthor[]} authors - An array of author objects to be inserted into the database.
+ * Each object must contain at least `author_olid` and `name`. Optional fields
+ * (bio, birth_date, death_date, pic_url) should be strings or null.
+ * @returns {Promise<string[]>} - A promise that resolves to an array of `author_olid`s
+ * for the authors that were successfully *newly inserted* into the database.
+ * @throws {Error} - Throws an error if the input `authors` is not a valid array,
+ * or if a database operation fails unexpectedly. Invalid individual author objects
+ * within the array will be skipped with a warning, but won't stop the batch.
+ */
+export async function postOlAuthors(authors) {
+    // --- Input Validation for the 'authors' array itself ---
+    if (!Array.isArray(authors) || authors.length === 0) {
+        throw new Error('postOlAuthors: Expected an array of author objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = []; // e.g., '($1, $2, $3, $4, $5, $6)' for each author
+    const flattenedQueryValues = []; // Flat array of all values for the prepared statement
+    const processedAuthors = []; // Authors that passed initial validation and will be attempted for insertion
+
+    for (const author of authors) {
+        // --- Data Type Defense for each individual author object ---
+        if (typeof author !== 'object' || author === null) {
+            console.warn('postOlAuthors: Skipping invalid author entry (not an object).', author);
+            continue;
+        }
+
+        const {
+            author_olid,
+            name,
+            bio,
+            birth_date,
+            death_date,
+            pic_url
+        } = author;
+
+        // Ensure required fields are present and of correct type
+        if (typeof name !== 'string' || name.trim() === '') {
+            console.warn('postOlAuthors: Skipping author due to missing or invalid required name.', author);
+            continue;
+        }
+
+        try {
+            // Validate the author_olid format using the external validateOlid function
+            const type = utils.validateOlid(author_olid);
+            if (type !== 'author') {
+                throw new Error(`Invalid OLID type for author_olid: Expected 'author', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`postOlAuthors: Skipping author '${author_olid}' due to invalid OLID format. ${error.message}`);
+            continue;
+        }
+
+        // Add placeholders for the current author's values in the SQL query
+        // E.g., if flattenedQueryValues.length is 0, this becomes ($1, $2, $3, $4, $5, $6)
+        // If flattenedQueryValues.length is 6, this becomes ($7, $8, ...)
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2}, $${flattenedQueryValues.length + 3}, $${flattenedQueryValues.length + 4}, $${flattenedQueryValues.length + 5}, $${flattenedQueryValues.length + 6})`);
+
+        // Add the actual values to the flattened array, ensuring optional fields are `null` if undefined
+        flattenedQueryValues.push(
+            author_olid,
+            name,
+            bio || null, // Ensure bio is null if not provided
+            birth_date || null, // Ensure birth_date is null if not provided
+            death_date || null, // Ensure death_date is null if not provided
+            pic_url || null // Ensure pic_url is null if not provided
+        );
+
+        // Keep track of authors that passed validation and are included in this batch
+        processedAuthors.push(author_olid);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlAuthors: No valid authors found to insert after filtering input array.");
+        return []; // No valid authors to insert, return empty array
+    }
+
+    // Construct the full SQL INSERT query for batch insertion
+    // ON CONFLICT (author_olid) DO NOTHING: This is crucial for efficiency.
+    // If an author with the same author_olid already exists, the database will
+    // simply skip inserting that row without throwing an error, and it won't be
+    // included in the RETURNING clause.
+    let query = `
+        INSERT INTO authors (author_olid, name, bio, birth_date, death_date, pic_url)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (author_olid) DO NOTHING
+        RETURNING author_olid;
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const successfullyInsertedOlids = [];
+        if (result.rows && result.rows.length > 0) {
+            for (const row of result.rows) {
+                const olAuthorId = row.author_olid;
+                successfullyInsertedOlids.push(olAuthorId);
+                // Update in-memory cache for each author that was *newly inserted* by the DB
+                updateCache("authors", olAuthorId);
+            }
+        }
+
+        console.log(`postOlAuthors: Processed ${processedAuthors.length} authors. Successfully inserted/updated ${successfullyInsertedOlids.length} new authors in database and cache.`);
+
+        return successfullyInsertedOlids; // Return OLIDs of newly inserted authors
+
+    } catch (error) {
+        console.error(`Error during batch insertion of authors:`, error);
+        throw new Error(`Database error storing authors: ${error.message}`);
+    }
+}
+
+/**
+ * Inserts a new Open Library edition into the database.
+ * This function includes validation for its input parameters using `validateOlid` for `edition_olid` and `work_olid`.
+ * If the edition (identified by `edition_olid`) already exists, this function will typically
+ * cause a unique constraint violation if `edition_olid` is a primary key or has a unique constraint.
+ * Consider adding `ON CONFLICT` to the SQL query for more graceful handling of duplicates.
+ *
+ * @param {string} edition_olid - The Open Library ID of the edition (e.g., "OL123E"). Must be a valid OLID of type 'edition'.
+ * @param {string} work_olid - The Open Library ID of the work associated with this edition. Must be a valid OLID of type 'work'.
+ * @param {string} title - The title of the edition. Must be a non-empty string.
+ * @param {string | null} [description=null] - A description of the edition (optional, defaults to null, can be a non-empty string).
+ * @param {string | null} publish_date - The publication date of the edition (can be null or a non-empty string).
+ * @param {string | null} [cover_url] - URL to the edition's cover image (can be null or a non-empty string).
+ * @returns {Promise<string | null>} A promise that resolves to the `edition_olid` of the newly inserted edition
+ * or `null` if the insertion fails.
+ * @throws {Error} Throws an error if input validation fails or if the database operation fails.
+ */
+export async function postOlEdition(edition_olid, work_olid, title, description = null, publish_date, cover_url) {
+    // Input validation
+    try {
+        const type = utils.validateOlid(edition_olid);
+        if (type !== 'edition') {
+            throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`postOlEdition: Invalid edition_olid format: ${edition_olid}. ${error.message}`);
+    }
+
+    try {
+        const type = utils.validateOlid(work_olid);
+        if (type !== 'work') {
+            throw new Error(`Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`postOlEdition: Invalid work_olid format. ${error.message}`);
+    }
+
+    if (typeof title !== 'string' || title.trim() === '') {
+        throw new Error('postOlEdition: Invalid title. Must be a non-empty string.');
+    }
+    if (description !== null && typeof description !== 'string') {
+        throw new Error('postOlEdition: Invalid description. Must be a string or null.');
+    }
+    if (publish_date !== null && typeof publish_date !== 'string') {
+        throw new Error('postOlEdition: Invalid publish_date. Must be a string or null.');
+    }
+    if (cover_url !== null && typeof cover_url !== 'string') {
+        throw new Error('postOlEdition: Invalid cover_url. Must be a string or null.');
+    }
+
+
+    try {
+        let query = `
+            INSERT INTO book_editions (edition_olid, work_olid, title, description, publish_date, cover_url)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING edition_olid;
+        `;
+        let data = [edition_olid, work_olid, title, description, publish_date, cover_url];
+
+        const result = await database.query(query, data);
+        if (result.rows[0]?.edition_olid) {
+            updateCache("editions", result.rows[0].edition_olid);
+        }
+
+        console.log(`... Added edition data to database and cache: ${edition_olid}`);
+
+        return result.rows[0]?.edition_olid || null; // Return the edition_olid if available otherwise null indicates failure
+
+    } catch (error) {
+        console.error(`Error writing edition ${edition_olid} to database:`, error);
+        throw new Error(`Database error storing edition ${edition_olid}: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} OlSubject
+ * @property {string} name - The name of the subject.
+ * @property {string | null} [type] - The type of the subject (optional).
+ */
+
+/**
+ * Inserts one or more Open Library subject objects into the database in a batch.
+ * If a subject with the same name and type combination already exists, it will be skipped (`ON CONFLICT (name, type) DO NOTHING`).
+ * Updates the in-memory cache for successfully newly inserted subjects.
+ *
+ * @param {OlSubject[]} subjects - An array of subject objects to be inserted.
+ * Each object must contain at least a `name` property. The `type` property is optional.
+ * @returns {Promise<Object[]>} - A promise that resolves to an array of objects for the
+ * successfully *newly inserted* subjects (each object includes id, name, type).
+ * Returns an empty array if no valid subjects are provided or inserted.
+ * @throws {Error} - Throws an error if the input is not a valid array of subjects or
+ * if a critical database operation fails.
+ */
+export async function postOlSubjects(subjects) {
+    // Input validation: ensure 'subjects' is a non-empty array
+    if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+        throw new Error('postOlSubjects: Expected an array of subject objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = []; // Array to hold '($1, $2)', '($3, $4)', etc., for each subject
+    const flattenedQueryValues = []; // Flat array of all values for the prepared statement
+
+    for (const subject of subjects) {
+        // Data defense for each individual subject object
+        if (typeof subject !== 'object' || subject === null) {
+            console.warn('postOlSubjects: Skipping invalid subject entry (not an object).', subject);
+            continue;
+        }
+
+        const {
+            name,
+            type
+        } = subject;
+
+        // Validate required field: 'name'
+        if (typeof name !== 'string' || name.trim() === '') {
+            console.warn('postOlSubjects: Skipping subject due to missing or invalid name.', subject);
+            continue;
+        }
+
+        // Add placeholders for the current subject's values to construct the SQL query dynamically
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2})`);
+
+        // Add the actual values to the flattened array, ensuring optional 'type' is null if not provided
+        flattenedQueryValues.push(
+            name,
+            type || null // Set to null if type is undefined, null, or an empty string
+        );
+    }
+
+    // If no valid subjects were found after filtering, return early
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlSubjects: No valid subjects to insert after filtering.");
+        return [];
+    }
+
+    let query = `
+        INSERT INTO subjects (name, type)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (name, type) DO NOTHING
+        RETURNING *;
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const newlyInsertedSubjects = [];
+        if (result.rows && result.rows.length > 0) {
+            for (const row of result.rows) {
+                newlyInsertedSubjects.push(row);
+                // Update the in-memory cache for each *newly inserted* subject
+                // Assuming updateCache function takes (type, key, dataObject)
+                updateCache("subject", null, row); // 'null' is used for the key
+            }
+        }
+        console.log(`postOlSubjects: Attempted to process ${subjects.length} subjects. Successfully inserted ${newlyInsertedSubjects.length} new subjects.`);
+
+        // Return the full objects of newly inserted subjects, including their generated IDs
+        return newlyInsertedSubjects;
+
+    } catch (error) {
+        // Log the original error for debugging purposes
+        console.error(`Error during batch insertion of subjects:`, error);
+        // Re-throw a more general error message to avoid exposing internal database details
+        throw new Error(`Database error storing subjects: ${error.message}`);
+    }
+}
+
+
+/**
+ * @typedef {Object} WorksSubjectsAssociation
+ * @property {string} work_olid - The Open Library ID of the work (e.g., "OL123W").
+ * @property {number} subject_id - The internal database ID of the subject.
+ */
+/**
+ * Creates multiple associations between works and subjects in the database in a batch.
+ * This function includes validation for its input parameters.
+ * It handles cases where associations already exist by using `ON CONFLICT DO NOTHING`,
+ * allowing existing associations to be skipped without errors.
+ *
+ * @param {WorkSubjectAssociation[]} associations - An array of objects, where each object
+ * represents a work-subject association to be created.
+ * @returns {Promise<WorkSubjectAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function postOlWorksSubjects(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('postOlWorksSubjects: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = [];
+    const flattenedQueryValues = [];
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('postOlWorksSubjects: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            work_olid,
+            subject_id
+        } = assoc;
+
+        // Input validation for individual work_olid
+        try {
+            const type = utils.validateOlid(work_olid);
+            if (type !== 'work') {
+                throw new Error(`Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`postOlWorksSubjects: Skipping association due to invalid work_olid '${work_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual subject_id
+        if (typeof subject_id !== 'number' || !Number.isInteger(subject_id)) {
+            console.warn(`postOlWorksSubjects: Skipping association due to invalid subject_id '${subject_id}'. Must be an integer.`);
+            continue;
+        }
+
+        // Add placeholders for the current association's values
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2})`);
+
+        // Add the actual values to the flattened array
+        flattenedQueryValues.push(work_olid, subject_id);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlWorksSubjects: No valid associations found to insert after filtering input array.");
+        return []; // No valid associations to insert, return empty array
+    }
+
+    let query = `
+        INSERT INTO works_subjects (work_olid, subject_id)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (work_olid, subject_id) DO NOTHING
+        RETURNING *;
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`postOlWorksSubjects: Processed ${associations.length} potential associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during batch insertion of work-subject associations:`, error);
+        throw new Error(`Database error storing work-subject associations: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} AuthorBookAssociation
+ * @property {string} author_olid - The Open Library ID of the author.
+ * @property {string} edition_olid - The Open Library ID of the edition (book).
+ */
+
+/**
+ * Creates multiple associations between authors and editions (books) in the database in a batch.
+ * This function includes validation for its input parameters.
+ * It handles cases where associations already exist by using `ON CONFLICT DO NOTHING`,
+ * allowing existing associations to be skipped without errors.
+ *
+ * @param {AuthorBookAssociation[]} associations - An array of objects, where each object
+ * represents an author-edition association to be created.
+ * @returns {Promise<AuthorBookAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function postOlAuthorsBooks(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('postOlAuthorsBooks: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = [];
+    const flattenedQueryValues = [];
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('postOlAuthorsBooks: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            author_olid,
+            edition_olid
+        } = assoc;
+
+        // Input validation for individual author_olid
+        try {
+            const type = utils.validateOlid(author_olid);
+            if (type !== 'author') {
+                throw new Error(`Invalid OLID type for author_olid: Expected 'author', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`postOlAuthorsBooks: Skipping association due to invalid author_olid '${author_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual edition_olid
+        try {
+            const type = utils.validateOlid(edition_olid);
+            if (type !== 'edition') {
+                throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`postOlAuthorsBooks: Skipping association due to invalid edition_olid '${edition_olid}': ${error.message}`);
+            continue;
+        }
+
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2})`);
+        flattenedQueryValues.push(author_olid, edition_olid);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlAuthorsBooks: No valid associations found to insert after filtering input array.");
+        return [];
+    }
+
+    let query = `
+        INSERT INTO authors_books (author_olid, edition_olid)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (author_olid, edition_olid) DO NOTHING -- Assuming this is your unique constraint
+        RETURNING *;
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`postOlAuthorsBooks: Processed ${associations.length} potential associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during batch insertion of author-edition associations:`, error);
+        throw new Error(`Database error storing author-edition associations: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} OlLanguage - Represents the structure of a language object for database insertion.
+ * @property {string} language - The full name of the language (e.g., "English").
+ * @property {string} key - The Open Library key for the language (e.g., "/languages/eng").
+ * @property {number} [id] - The internal database ID for the language (assigned after insertion).
+ */
+
+/**
+ * Inserts one or more Open Library language objects into the database in a batch.
+ * If a language with the same 'key' already exists, it will be skipped (`ON CONFLICT (key) DO NOTHING`).
+ * Updates the in-memory cache for successfully newly inserted languages.
+ *
+ * @param {OlLanguage[]} languages - An array of language objects to be inserted.
+ * Each object must contain `language` and `key` properties.
+ * @returns {Promise<OlLanguage[]>} - A promise that resolves to an array of the
+ * successfully *newly inserted* language objects (including their `id`).
+ * Returns an empty array if no valid languages are provided or inserted.
+ * @throws {Error} - Throws an error if the input `languages` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * language objects within the array will be skipped with a warning.
+ */
+export async function postOlLanguages(languages) {
+    // --- Input Validation for the 'languages' array itself ---
+    if (!Array.isArray(languages) || languages.length === 0) {
+        throw new Error('postOlLanguages: Expected an array of language objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = [];
+    const flattenedQueryValues = [];
+
+    for (const lang of languages) {
+        // --- Data Type Defense for each individual language object ---
+        if (typeof lang !== 'object' || lang === null) {
+            console.warn('postOlLanguages: Skipping invalid language entry (not an object).', lang);
+            continue;
+        }
+
+        const {
+            language,
+            key
+        } = lang;
+
+        // Validate required fields: 'language' and 'key'
+        if (typeof language !== 'string' || language.trim() === '') {
+            console.warn('postOlLanguages: Skipping language due to missing or invalid "language" property.', lang);
+            continue;
+        }
+        if (typeof key !== 'string' || key.trim() === '') {
+            console.warn('postOlLanguages: Skipping language due to missing or invalid "key" property.', lang);
+            continue;
+        }
+
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2})`);
+        flattenedQueryValues.push(language, key);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlLanguages: No valid languages found to insert after filtering input array.");
+        return []; // No valid languages to insert, return empty array
+    }
+
+    let query = `
+        INSERT INTO languages (language, key)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (key) DO NOTHING
+        RETURNING *; -- Return all columns for caching and caller validation
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const newLanguages = result.rows;
+
+        // Update in-memory cache for each language that was *newly inserted* by the DB
+        if (newLanguages.length > 0) {
+            for (const langRow of newLanguages) {
+                const languageToCache = {
+                    ...langRow,
+                    id: parseInt(langRow.id)
+                };
+                updateCache("language", null, languageToCache);
+            }
+        }
+
+        console.log(`postOlLanguages: Processed ${languages.length} languages. Successfully inserted ${newLanguages.length} new languages in database and cache.`);
+        return newLanguages;
+
+    } catch (error) {
+        console.error(`Error during batch insertion of languages:`, error);
+        throw new Error(`Database error storing languages: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} EditionLanguageAssociation
+ * @property {string} edition_olid - The Open Library ID of the edition (e.g., "OL123E").
+ * @property {number} language_id - The internal database ID of the language.
+ */
+
+/**
+ * Creates multiple associations between editions and languages in the database in a batch.
+ * This function includes validation for its input parameters.
+ * It handles cases where associations already exist by using `ON CONFLICT DO NOTHING`,
+ * allowing existing associations to be skipped without errors.
+ *
+ * @param {EditionLanguageAssociation[]} associations - An array of objects, where each object
+ * represents an edition-language association to be created.
+ * @returns {Promise<EditionLanguageAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function postOlEditionsLanguages(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('postOlEditionsLanguages: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = [];
+    const flattenedQueryValues = [];
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('postOlEditionsLanguages: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            edition_olid,
+            language_id
+        } = assoc;
+
+        // Input validation for individual edition_olid
+        try {
+            const type = utils.validateOlid(edition_olid);
+            if (type !== 'edition') {
+                throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`postOlEditionsLanguages: Skipping association due to invalid edition_olid '${edition_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual language_id
+        if (typeof language_id !== 'number' || !Number.isInteger(language_id)) {
+            console.warn(`postOlEditionsLanguages: Skipping association due to invalid language_id '${language_id}'. Must be an integer.`);
+            continue;
+        }
+
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2})`);
+        flattenedQueryValues.push(edition_olid, language_id);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("postOlEditionsLanguages: No valid associations found to insert after filtering input array.");
+        return [];
+    }
+
+    let query = `
+        INSERT INTO editions_languages (edition_olid, language_id)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (edition_olid, language_id) DO NOTHING
+        RETURNING *;
+    `;
+
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`postOlEditionsLanguages: Processed ${associations.length} potential associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during batch insertion of edition-language associations:`, error);
+        throw new Error(`Database error storing edition-language associations: ${error.message}`);
+    }
+}
+
+//* ---------------------------- *//
+//* Book (PUT /Update) functions *//
+//*   (Data from Open Library)   *//
+//* ---------------------------- *//
+
+/**
+ * Overwrites an Open Library work in the database.
+ * This function includes validation for its input parameters using `validateOlid` for `work_olid`.
+ *
+ * @param {string} work_olid - The Open Library ID of the work (e.g., "OL123W"). Must be a valid OLID of type 'work'.
+ * @param {string} title - The title of the work. Must be a non-empty string.
+ * @param {string | null} first_publication_date - The first publication date of the work (can be null or a non-empty string).
+ * @returns {Promise<string | null>} A promise that resolves to the `work_olid` of the newly inserted work
+ * or `null` if the insertion fails (e.g., due to an empty result set from the DB).
+ * @throws {Error} Throws an error if input validation fails or if the database operation fails.
+ */
+export async function putOlWork(work_olid, title, first_publication_date) {
+    // Input validation
+    try {
+        const type = utils.validateOlid(work_olid);
+        if (type !== 'work') {
+            throw new Error(`Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`putOlWork: Invalid work_olid format. ${error.message}`);
+    }
+
+    if (typeof title !== 'string' || title.trim() === '') {
+        throw new Error('putOlWork: Invalid title. Must be a non-empty string.');
+    }
+    if (first_publication_date !== null && typeof first_publication_date !== 'string') {
+        throw new Error('putOlWork: Invalid first_publication_date. Must be a string or null.');
+    }
+
+    try {
+
+        let query = `
+            INSERT INTO book_works (work_olid, title, first_publication_date)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (work_olid) DO UPDATE SET
+                title = EXCLUDED.title,
+                first_publication_date = EXCLUDED.first_publication_date,
+                last_refreshed = CURRENT_TIMESTAMP
+            RETURNING work_olid;
+        `;
+        let data = [work_olid, title, first_publication_date];
+
+
+        const result = await database.query(query, data);
+
+        if (result.rows[0]?.work_olid) {
+            updateCache("works", result.rows[0].work_olid);
+        }
+
+        console.log(`... Updated works data to database and cache: ${work_olid}`);
+        return result.rows[0]?.work_olid || null; // Return the work_olid if available otherwise null indicates failure
+
+    } catch (error) {
+        console.error(`Error writing updated work ${work_olid} to database:`, error);
+        throw new Error(`Database error updating work ${work_olid}: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} OlAuthor - Represents the structure of an Open Library author object for database insertion/update.
+ * @property {string} author_olid - The Open Library ID for the author (e.g., "OL123A"). Must be a valid OLID format and of type 'author'.
+ * @property {string} name - The primary name of the author. Must be a non-empty string.
+ * @property {string | null} [bio] - The author's biography (optional, defaults to null if not provided or empty).
+ * @property {string | null} [birth_date] - The author's birth date (optional, defaults to null if not provided or empty).
+ * @property {string | null} [death_date] - The author's death date (optional, defaults to null if not provided or empty).
+ * @property {string | null} [pic_url] - URL to the author's picture (optional, defaults to null if not provided or empty).
+ */
+
+/**
+ * Inserts or updates one or more Open Library author records in the database in a batch.
+ * This function utilizes a `MERGE` (UPSERT) operation:
+ * - If an author (identified by `author_olid`) already exists, its `name`, `bio`, `birth_date`, `death_date`, and `pic_url` will be updated.
+ * - If an author does not exist, a new record will be inserted.
+ *
+ * Input authors are validated before processing. Invalid author objects will be skipped with a warning.
+ * Successfully processed authors (both newly inserted and updated) will have their `author_olid` returned
+ * and their presence in the in-memory cache updated.
+ *
+ * @param {OlAuthor[]} authors - An array of author objects to be inserted or updated in the database.
+ * Each object must conform to the `OlAuthor` typedef.
+ * @returns {Promise<string[]>} A promise that resolves to an array of `author_olid`s that were
+ * successfully processed (either inserted or updated) by the database operation.
+ * Returns an empty array if no valid authors are provided or processed.
+ * @throws {Error} Throws an error if the input `authors` is not a valid array, or if a critical
+ * database operation fails unexpectedly. Individual invalid author objects within the array
+ * will be skipped with warnings but will not halt the entire batch operation.
+ */
+export async function putOlAuthors(authors) {
+    // --- Input Validation for the 'authors' array itself ---
+    if (!Array.isArray(authors) || authors.length === 0) {
+        throw new Error('putOlAuthors: Expected an array of author objects, but received an empty or invalid array.');
+    }
+
+    const queryValuePlaceholders = []; // e.g., '($1, $2, $3, $4, $5, $6)' for each author
+    const flattenedQueryValues = []; // Flat array of all values for the prepared statement
+    const processedAuthors = []; // Authors that passed initial validation and will be attempted for insertion
+
+    for (const author of authors) {
+        // --- Data Type Defense for each individual author object ---
+        if (typeof author !== 'object' || author === null) {
+            console.warn('putOlAuthors: Skipping invalid author entry (not an object).', author);
+            continue;
+        }
+
+        const {
+            author_olid,
+            name,
+            bio,
+            birth_date,
+            death_date,
+            pic_url
+        } = author;
+
+        // Ensure required fields are present and of correct type
+        if (typeof name !== 'string' || name.trim() === '') {
+            console.warn('putOlAuthors: Skipping author due to missing or invalid required name.', author);
+            continue;
+        }
+
+        try {
+            // Validate the author_olid format using the external validateOlid function
+            const type = utils.validateOlid(author_olid);
+            if (type !== 'author') {
+                throw new Error(`putOlAuthors: Invalid OLID type for author_olid: Expected 'author', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`putOlAuthors: Skipping author '${author_olid}' due to invalid OLID format. ${error.message}`);
+            continue;
+        }
+
+        // Add placeholders for the current author's values in the SQL query
+        // E.g., if flattenedQueryValues.length is 0, this becomes ($1, $2, $3, $4, $5, $6)
+        // If flattenedQueryValues.length is 6, this becomes ($7, $8, ...)
+        queryValuePlaceholders.push(`($${flattenedQueryValues.length + 1}, $${flattenedQueryValues.length + 2}, $${flattenedQueryValues.length + 3}, $${flattenedQueryValues.length + 4}, $${flattenedQueryValues.length + 5}, $${flattenedQueryValues.length + 6})`);
+
+        // Add the actual values to the flattened array, ensuring optional fields are `null` if undefined
+        flattenedQueryValues.push(
+            author_olid,
+            name,
+            bio || null, // Ensure bio is null if not provided
+            birth_date || null, // Ensure birth_date is null if not provided
+            death_date || null, // Ensure death_date is null if not provided
+            pic_url || null // Ensure pic_url is null if not provided
+        );
+
+        // Keep track of authors that passed validation and are included in this batch
+        processedAuthors.push(author_olid);
+    }
+
+    if (queryValuePlaceholders.length === 0) {
+        console.log("putOlAuthors: No valid authors found to insert after filtering input array.");
+        return []; // No valid authors to insert, return empty array
+    }
+
+    let query = `
+        INSERT INTO authors (author_olid, name, bio, birth_date, death_date, pic_url)
+        VALUES ${queryValuePlaceholders.join(', ')}
+        ON CONFLICT (author_olid) DO UPDATE SET
+            name = EXCLUDED.name,
+            bio = EXCLUDED.bio,
+            birth_date = EXCLUDED.birth_date,
+            death_date = EXCLUDED.death_date,
+            pic_url = EXCLUDED.pic_url,
+            last_refreshed = CURRENT_TIMESTAMP
+        RETURNING author_olid;
+    `;
+    try {
+        const result = await database.query(query, flattenedQueryValues);
+
+        const successfullyInsertedOlids = [];
+
+        if (result.rows && result.rows.length > 0) {
+            for (const row of result.rows) {
+                const olAuthorId = row.author_olid;
+                successfullyInsertedOlids.push(olAuthorId);
+                // Update in-memory cache for each author that was *newly inserted* by the DB
+                updateCache("authors", olAuthorId);
+            }
+        }
+
+        console.log(`putOlAuthors: Processed ${processedAuthors.length} authors. Successfully updated ${successfullyInsertedOlids.length} authors in database and cache.`);
+
+        return successfullyInsertedOlids; // Return OLIDs of newly inserted authors
+
+    } catch (error) {
+        console.error(`Error during batch update of authors:`, error);
+        throw new Error(`Database error storing authors: ${error.message}`);
+    }
+}
+
+/**
+ * Updates an existing edition in the database wit Open Library data.
+ * This function includes validation for its input parameters using `validateOlid` for `edition_olid` and `work_olid`.
+ *
+ * @param {string} edition_olid - The Open Library ID of the edition (e.g., "OL123E"). Must be a valid OLID of type 'edition'.
+ * @param {string} work_olid - The Open Library ID of the work associated with this edition. Must be a valid OLID of type 'work'.
+ * @param {string} title - The title of the edition. Must be a non-empty string.
+ * @param {string | null} [description=null] - A description of the edition (optional, defaults to null, can be a non-empty string).
+ * @param {string | null} publish_date - The publication date of the edition (can be null or a non-empty string).
+ * @param {string | null} [cover_url] - URL to the edition's cover image (can be null or a non-empty string).
+ * @returns {Promise<string | null>} A promise that resolves to the `edition_olid` of the newly inserted edition
+ * or `null` if the insertion fails.
+ * @throws {Error} Throws an error if input validation fails or if the database operation fails.
+ */
+export async function putOlEdition(edition_olid, work_olid, title, description = null, publish_date, cover_url) {
+    // Input validation
+    try {
+        const type = utils.validateOlid(edition_olid);
+        if (type !== 'edition') {
+            throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`putOlEdition: Invalid edition_olid format. ${error.message}`);
+    }
+
+    try {
+        const type = utils.validateOlid(work_olid);
+        if (type !== 'work') {
+            throw new Error(`putOlEdition: Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+        }
+    } catch (error) {
+        throw new Error(`putOlEdition: Invalid work_olid format. ${error.message}`);
+    }
+
+    if (typeof title !== 'string' || title.trim() === '') {
+        throw new Error('putOlEdition: Invalid title. Must be a non-empty string.');
+    }
+    if (description !== null && typeof description !== 'string') {
+        throw new Error('putOlEdition: Invalid description. Must be a string or null.');
+    }
+    if (publish_date !== null && typeof publish_date !== 'string') {
+        throw new Error('putOlEdition: Invalid publish_date. Must be a string or null.');
+    }
+    if (cover_url !== null && typeof cover_url !== 'string') {
+        throw new Error('putOlEdition: Invalid cover_url. Must be a string or null.');
+    }
+
+
+    try {
+
+        let query = `
+            INSERT INTO book_editions (edition_olid, work_olid, title, description, publish_date, cover_url)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (edition_olid) DO UPDATE SET
+                work_olid = EXCLUDED.work_olid,
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                publish_date = EXCLUDED.publish_date,
+                cover_url = EXCLUDED.cover_url,
+                last_refreshed = CURRENT_TIMESTAMP
+            RETURNING edition_olid;
+        `;
+
+        let data = [edition_olid, work_olid, title, description, publish_date, cover_url];
+
+        const result = await database.query(query, data);
+        if (result.rows[0]?.edition_olid) {
+            updateCache("editions", result.rows[0].edition_olid);
+        }
+
+        console.log(`... Updataed edition data to database and cache: ${edition_olid}`);
+
+        return result.rows[0]?.edition_olid || null; // Return the edition_olid if available otherwise null indicates failure
+
+    } catch (error) {
+        console.error(`Error updating edition ${edition_olid} in database:`, error);
+        throw new Error(`Database error updating edition ${edition_olid}: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} WorksSubjectsAssociation
+ * @property {string} work_olid - The Open Library ID of the work (e.g., "OL123W").
+ * @property {number} subject_id - The internal database ID of the subject.
+ */
+/**
+ * Updates multiple associations between works and subjects in the database.
+ * This function effectively synchronizes the associations: it deletes all existing
+ * associations for the provided work_olids and then inserts the new ones.
+ *
+ * @param {WorksSubjectsAssociation[]} associations - An array of objects, where each object
+ * represents a work-subject association to be created.
+ * @returns {Promise<WorksSubjectsAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function putOlWorksSubjects(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('putOlWorksSubjects: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const validAssociations = [];
+    const uniqueWorkOlids = new Set(); // To track which works need their old subjects deleted
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('putOlWorksSubjects: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            work_olid,
+            subject_id
+        } = assoc;
+
+        // Input validation for individual work_olid
+        try {
+            const type = utils.validateOlid(work_olid);
+            if (type !== 'work') {
+                throw new Error(`putOlWorksSubjects: Invalid OLID type for work_olid: Expected 'work', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`putOlWorksSubjects: Skipping association due to invalid work_olid '${work_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual subject_id
+        if (typeof subject_id !== 'number' || !Number.isInteger(subject_id)) {
+            console.warn(`putOlWorksSubjects: Skipping association due to invalid subject_id '${subject_id}'. Must be an integer.`);
+            continue;
+        }
+
+        validAssociations.push(assoc);
+        uniqueWorkOlids.add(work_olid); // Collect unique work OLIDs
+    }
+
+    if (validAssociations.length === 0) {
+        console.log("putOlWorksSubjects: No valid associations found after filtering input array.");
+        return []; // No valid associations to insert, return empty array
+    }
+
+    try {
+        // Step 1: Delete all existing associations for the affected works
+        if (uniqueWorkOlids.size > 0) {
+            const deleteQuery = `
+                DELETE FROM works_subjects
+                WHERE work_olid = ANY($1::text[]);
+            `;
+            // Convert Set to array for PostgreSQL ANY operator
+            await database.query(deleteQuery, [Array.from(uniqueWorkOlids)]);
+            console.log(`putOlWorksSubjects: Deleted existing associations for ${uniqueWorkOlids.size} unique works.`);
+        }
+
+        // Step 2: Insert all new associations (batch insert with ON CONFLICT DO NOTHING)
+        const queryValuePlaceholders = [];
+        const flattenedQueryValues = [];
+        validAssociations.forEach((assoc, index) => {
+            const startIdx = index * 2;
+            queryValuePlaceholders.push(`($${startIdx + 1}, $${startIdx + 2})`);
+            flattenedQueryValues.push(assoc.work_olid, assoc.subject_id);
+        });
+
+        const insertQuery = `
+            INSERT INTO works_subjects (work_olid, subject_id)
+            VALUES ${queryValuePlaceholders.join(', ')}
+            ON CONFLICT (work_olid, subject_id) DO NOTHING
+            RETURNING *;
+        `;
+
+        const result = await database.query(insertQuery, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`putOlWorksSubjects: Processed ${validAssociations.length} valid associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during synchronization of work-subject associations:`, error);
+        throw new Error(`Database error synchronizing work-subject associations: ${error.message}`);
+    }
+}
+
+/**
+ * @typedef {Object} AuthorBookAssociation
+ * @property {string} author_olid - The Open Library ID of the author.
+ * @property {string} edition_olid - The Open Library ID of the edition (book).
+ */
+
+/**
+ * Synchronizes multiple associations between authors and editions (books) in the database.
+ * This function effectively replaces the existing associations for the provided authors:
+ * it deletes all current associations for those authors and then inserts the new ones.
+ *
+ * @param {AuthorBookAssociation[]} associations - An array of objects, where each object
+ * represents an author-edition association to be created.
+ * @returns {Promise<AuthorBookAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function putOlAuthorsBooks(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('putOlAuthorsBooks: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const validAssociations = [];
+    const uniqueAuthorOlids = new Set(); // To track which authors need their old books deleted
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('putOlAuthorsBooks: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            author_olid,
+            edition_olid
+        } = assoc;
+
+        // Input validation for individual author_olid
+        try {
+            const type = utils.validateOlid(author_olid);
+            if (type !== 'author') {
+                throw new Error(`Invalid OLID type for author_olid: Expected 'author', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`putOlAuthorsBooks: Skipping association due to invalid author_olid '${author_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual edition_olid
+        try {
+            const type = utils.validateOlid(edition_olid);
+            if (type !== 'edition') {
+                throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`putOlAuthorsBooks: Skipping association due to invalid edition_olid '${edition_olid}': ${error.message}`);
+            continue;
+        }
+
+        validAssociations.push(assoc);
+        uniqueAuthorOlids.add(author_olid); // Collect unique author OLIDs
+    }
+
+    if (validAssociations.length === 0) {
+        console.log("putOlAuthorsBooks: No valid associations found after filtering input array.");
+        return []; // No valid associations to insert, return empty array
+    }
+
+    try {
+        // Step 1: Delete all existing associations for the affected authors
+        if (uniqueAuthorOlids.size > 0) {
+            const deleteQuery = `
+                DELETE FROM authors_books
+                WHERE author_olid = ANY($1::text[]);
+            `;
+            // Convert Set to array for PostgreSQL ANY operator
+            await database.query(deleteQuery, [Array.from(uniqueAuthorOlids)]);
+            console.log(`putOlAuthorsBooks: Deleted existing associations for ${uniqueAuthorOlids.size} unique authors.`);
+        }
+
+        // Step 2: Insert all new associations (batch insert with ON CONFLICT DO NOTHING)
+        const queryValuePlaceholders = [];
+        const flattenedQueryValues = [];
+        validAssociations.forEach((assoc, index) => {
+            const startIdx = index * 2;
+            queryValuePlaceholders.push(`($${startIdx + 1}, $${startIdx + 2})`);
+            flattenedQueryValues.push(assoc.author_olid, assoc.edition_olid);
+        });
+
+        const insertQuery = `
+            INSERT INTO authors_books (author_olid, edition_olid)
+            VALUES ${queryValuePlaceholders.join(', ')}
+            ON CONFLICT (author_olid, edition_olid) DO NOTHING
+            RETURNING *;
+        `;
+
+        const result = await database.query(insertQuery, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`putOlAuthorsBooks: Processed ${validAssociations.length} valid associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during synchronization of author-edition associations:`, error);
+        throw new Error(`Database error synchronizing author-edition associations: ${error.message}`);
+    }
+}
+
+
+/**
+ * @typedef {Object} EditionLanguageAssociation
+ * @property {string} edition_olid - The Open Library ID of the edition.
+ * @property {number} language_id - The internal database ID of the language.
+ */
+
+/**
+ * Synchronizes multiple associations between editions and languages in the database.
+ * This function effectively replaces the existing associations for the provided editions:
+ * it deletes all current associations for those editions and then inserts the new ones.
+ *
+ * @param {EditionLanguageAssociation[]} associations - An array of objects, where each object
+ * represents an edition-language association to be created.
+ * @returns {Promise<EditionLanguageAssociation[]>} A promise that resolves to an array of full row objects for the *newly created* associations.
+ * Returns an empty array if no valid associations are provided or inserted.
+ * @throws {Error} Throws an error if the input `associations` is not a valid array,
+ * or if a critical database operation fails unexpectedly. Invalid individual
+ * associations within the array will be skipped with a warning.
+ */
+export async function putOlEditionsLanguages(associations) {
+    // --- Input Validation for the 'associations' array itself ---
+    if (!Array.isArray(associations) || associations.length === 0) {
+        throw new Error('putOlEditionsLanguages: Expected an array of association objects, but received an empty or invalid array.');
+    }
+
+    const validAssociations = [];
+    const uniqueEditionOlids = new Set(); // To track which editions need their old languages deleted
+
+    for (const assoc of associations) {
+        // --- Data Type Defense for each individual association object ---
+        if (typeof assoc !== 'object' || assoc === null) {
+            console.warn('putOlEditionsLanguages: Skipping invalid association entry (not an object).', assoc);
+            continue;
+        }
+
+        const {
+            edition_olid,
+            language_id
+        } = assoc;
+
+        // Input validation for individual edition_olid
+        try {
+            const type = utils.validateOlid(edition_olid);
+            if (type !== 'edition') {
+                throw new Error(`Invalid OLID type for edition_olid: Expected 'edition', got '${type}'.`);
+            }
+        } catch (error) {
+            console.warn(`putOlEditionsLanguages: Skipping association due to invalid edition_olid '${edition_olid}': ${error.message}`);
+            continue;
+        }
+
+        // Input validation for individual language_id
+        if (typeof language_id !== 'number' || !Number.isInteger(language_id)) {
+            console.warn(`putOlEditionsLanguages: Skipping association due to invalid language_id '${language_id}'. Must be an integer.`);
+            continue;
+        }
+
+        validAssociations.push(assoc);
+        uniqueEditionOlids.add(edition_olid); // Collect unique edition OLIDs
+    }
+
+    if (validAssociations.length === 0) {
+        console.log("putOlEditionsLanguages: No valid associations found after filtering input array.");
+        return []; // No valid associations to insert, return empty array
+    }
+
+    try {
+        // Step 1: Delete all existing associations for the affected editions
+        if (uniqueEditionOlids.size > 0) {
+            const deleteQuery = `
+                DELETE FROM editions_languages
+                WHERE edition_olid = ANY($1::text[]);
+            `;
+            // Convert Set to array for PostgreSQL ANY operator
+            await database.query(deleteQuery, [Array.from(uniqueEditionOlids)]);
+            console.log(`putOlEditionsLanguages: Deleted existing associations for ${uniqueEditionOlids.size} unique editions.`);
+        }
+
+        // Step 2: Insert all new associations (batch insert with ON CONFLICT DO NOTHING)
+        const queryValuePlaceholders = [];
+        const flattenedQueryValues = [];
+        validAssociations.forEach((assoc, index) => {
+            const startIdx = index * 2;
+            queryValuePlaceholders.push(`($${startIdx + 1}, $${startIdx + 2})`);
+            flattenedQueryValues.push(assoc.edition_olid, assoc.language_id);
+        });
+
+        const insertQuery = `
+            INSERT INTO editions_languages (edition_olid, language_id)
+            VALUES ${queryValuePlaceholders.join(', ')}
+            ON CONFLICT (edition_olid, language_id) DO UPDATE SET
+                last_refreshed = CURRENT_TIMESTAMP
+            RETURNING *;
+        `;
+
+        const result = await database.query(insertQuery, flattenedQueryValues);
+
+        const newAssociations = result.rows;
+
+        console.log(`putOlEditionsLanguages: Processed ${validAssociations.length} valid associations. Successfully inserted ${newAssociations.length} new associations.`);
+        return newAssociations;
+
+    } catch (error) {
+        console.error(`Error during synchronization of edition-language associations:`, error);
+        throw new Error(`Database error synchronizing edition-language associations: ${error.message}`);
     }
 }
 
@@ -685,62 +2132,6 @@ export async function getStatuses() {
     }
 }
 
-export async function updateLanguages() {
-    try {
-        console.log("Starting language cache update...");
-        const olLanguages = await ol.getData('languages');
-        const dbLanguages = await getLanguages();
-
-        const dbLanguageKeys = new Set(dbLanguages.map(lang => lang.key));
-
-        const languagesToInsertPromises = [];
-
-        olLanguages.forEach(olLang => {
-            // Defensive check: ensure olLang and olLang.key exist and are strings
-            if (olLang && typeof olLang.key === 'string' && typeof olLang.language === 'string') {
-                if (!dbLanguageKeys.has(olLang.key)) {
-                    // If the language key is not in our database, add a promise to insert it
-                    languagesToInsertPromises.push(putOlLanguage(olLang.language, olLang.key));
-                }
-            } else {
-                console.warn('Skipping malformed Open Library language object during update:', olLang);
-            }
-        });
-        if (languagesToInsertPromises.length > 0) {
-            console.log(`Found ${languagesToInsertPromises.length} new languages to insert into the database.`);
-
-            // Use Promise.allSettled to execute all inserts concurrently.
-            // This allows independent inserts to proceed even if some fail,
-            // and it provides detailed results for each operation.
-            const results = await Promise.allSettled(languagesToInsertPromises);
-
-            let insertedCount = 0;
-            let failedCount = 0;
-
-            results.forEach((result, index) => {
-                if (result.status === 'fulfilled') {
-                    insertedCount++;
-                    // Optional: Log successful inserts if needed
-                    // console.log(`Successfully inserted language (ID: ${result.value})`);
-                } else {
-                    failedCount++;
-                    // Log errors for failed inserts.
-                    // The original olLang isn't directly available here, so we log the reason.
-                    console.error(`Failed to insert a language. Reason: ${result.reason}`);
-                }
-            });
-            console.log(`Finished attempting to update languages in the database. Inserted: ${insertedCount}, Failed: ${failedCount}.`);
-        } else {
-            console.log("All Open Library languages already exist in the database. No new languages to insert.");
-        }
-
-    } catch (error) {
-        console.error('Error during language cache update in updateLanguages:', error);
-        // Re-throw the error to ensure initDbAndCache (the caller) is aware of the failure
-        throw error;
-    }
-}
-
 export async function getLanguages() {
     try {
         let query = `
@@ -759,27 +2150,738 @@ export async function getLanguages() {
     }
 }
 
-export async function initDbAndCache() {
+/**
+ * Checks if a specific item exists in the in-memory caches.
+ *
+ * @param {('work_olid'|'edition_olid'|'author_olid'|'subject_name_type'|'language_key'|'language_name')} type - The type of item to check.
+ * - For OLIDs, use 'work_olid', 'edition_olid', 'author_olid'.
+ * - For subjects, use 'subject_name_type'.
+ * - For languages, use 'language_key' or 'language_name'.
+ * @param {string | Object} data - The data to check against the cache.
+ * - For OLIDs, it's the OLID string (e.g., "OL123W").
+ * - For 'subject_name_type', it's an object `{ name: string, type: string | null }`.
+ * - For 'language_key', it's the language key string (e.g., "/languages/eng").
+ * - For 'language_name', it's the language name string (e.g., "English").
+ * @returns {boolean} True if the item is found in the cache, false otherwise.
+ */
+export function checkCache(type, data) {
+    // --- Data Type Defense for 'type' parameter ---
+    if (typeof type !== 'string') {
+        console.warn('checkCache: Invalid "type" parameter provided. Expected a string.', {
+            type,
+            data
+        });
+        return false;
+    }
+
+    switch (type) {
+        case 'work_olid':
+        case 'edition_olid':
+        case 'author_olid':
+            if (typeof data !== 'string') {
+                console.warn(`checkCache: Invalid "data" for type '${type}'. Expected a string OLID.`, {
+                    type,
+                    data
+                });
+                return false;
+            }
+            try {
+                // Defensive: Ensure the OLID itself is valid
+                utils.validateOlid(data); // This throws if invalid, caught below
+            } catch (error) {
+                console.warn(`checkCache: Invalid OLID format for type '${type}'. ${error.message}`, {
+                    type,
+                    data
+                });
+                return false;
+            }
+
+            // Use Set.has() for O(1) lookup
+            if (type === 'work_olid') {
+                return cachedOlids.works.has(data);
+            } else if (type === 'edition_olid') {
+                return cachedOlids.editions.has(data);
+            } else { // type === 'author_olid'
+                return cachedOlids.authors.has(data);
+            }
+
+        case 'subject_name_type': // New type to explicitly indicate checking by name AND type
+            if (!data || typeof data !== 'object' || typeof data.name !== 'string') {
+                console.warn(`checkCache: Invalid "data" for type '${type}'. Expected object { name: string, type: string | null }.`, {
+                    type,
+                    data
+                });
+                return false;
+            }
+            const subjectKey = `${data.name}|${data.type || ''}`;
+            return cachedSubjects.has(subjectKey);
+
+        case 'language_key':
+            if (typeof data !== 'string' || data.trim() === '') {
+                console.warn(`checkCache: Invalid "data" for type '${type}'. Expected a non-empty string.`, {
+                    type,
+                    data
+                });
+                return false;
+            }
+            return cachedLanguages.has(data); // Use Map.has() for O(1) lookup
+
+        case 'language_name': // Assuming you want to check by language name too
+            if (typeof data !== 'string' || data.trim() === '') {
+                console.warn(`checkCache: Invalid "data" for type '${type}'. Expected a non-empty string.`, {
+                    type,
+                    data
+                });
+                return false;
+            }
+            // For checking by language name, we still need to iterate the Map's values
+            // or maintain another Map if this is a very frequent lookup.
+            for (const lang of cachedLanguages.values()) {
+                if (lang.language && lang.language.toLowerCase() === data.toLowerCase()) {
+                    return true;
+                }
+            }
+            return false;
+
+        default:
+            console.warn(`checkCache: Unknown cache type specified: '${type}'. No check performed.`, {
+                type,
+                data
+            });
+            return false;
+    }
+}
+
+/**
+ * Updates the in-memory caches (cachedOlids, cachedSubjects, cachedLanguages) with new Open Library data.
+ * This function adds new OLIDs (for editions, works, authors), complete subject objects,
+ * or complete language objects to their respective caches if they are not already present.
+ * It uses Sets for OLID caches for efficient O(1) average-time lookups.
+ *
+ * @param {('edition'|'work'|'author'|'subject'|'language')} type - The type of item being cached.
+ * @param {string | null} olid - The Open Library ID (OLID) of the item. Required for 'edition', 'work', and 'author' types.
+ * For 'subject' and 'language' types, this parameter is expected to be null and is ignored.
+ * @param {Object | null} [data=null] - Optional. The data object to be cached.
+ * - For 'subject' type, it must be an object like `{id: number, name: string, type: string | null}`.
+ * - For 'language' type, it must be an object like `{id: number, language: string, key: string}`.
+ * - It is ignored for 'edition', 'work', and 'author' types.
+ * @returns {void}
+ * @throws {Error} Throws an error if required parameters are missing or invalid for the given type.
+ */
+export function updateCache(type, olid = null, data = null) {
+    // Basic validation for 'type'
+    const validTypes = ['editions', 'works', 'authors', 'subject', 'language'];
+    if (!validTypes.includes(type)) {
+        console.warn(`updateCache: Attempted to update cache with unknown or invalid type: '${type}'. Skipping.`);
+        return;
+    }
+
+    switch (type) {
+        case 'editions':
+        case 'works':
+        case 'authors':
+            // Validate OLID for these types
+            if (typeof olid !== 'string' || olid.trim() === '') {
+                console.warn(`updateCache: Invalid or missing OLID for type '${type}'. Must be a non-empty string. Skipping.`);
+                return;
+            }
+            // Ensure cachedOlids structure for the specific type is a Set
+            if (!(cachedOlids[type] instanceof Set)) {
+                console.error(`updateCache: cachedOlids.${type} is not initialized as a Set. Re-initializing.`);
+                cachedOlids[type] = new Set();
+            }
+
+            if (!cachedOlids[type].has(olid)) {
+                cachedOlids[type].add(olid);
+                // console.log(`Cache updated: Added ${type} OLID: ${olid}`); // Uncomment for detailed logging
+            }
+            break;
+
+        case 'subject':
+            // data = {id: number, name: string, type: string}
+            // Validate data object for 'subject'
+            if (!data || typeof data !== 'object' || data === null ||
+                typeof data.id !== 'number' || !Number.isInteger(data.id) ||
+                typeof data.name !== 'string' || data.name.trim() === '' ||
+                (data.type !== null && typeof data.type !== 'string')) { // Type can be null or string
+                console.warn(`updateCache: Invalid data object for 'subject' type. Expected {id: number, name: string, type: string | null}. Skipping. Data:`, data);
+                return;
+            }
+
+            // Construct the unique key for the Map
+            const subjectKey = `${data.name}|${data.type || 'Ungrouped'}`;
+
+            // Ensure cachedSubjects is initialized as a Map
+            if (!(cachedSubjects instanceof Map)) {
+                console.error(`updateCache: cachedSubjects is not initialized as a Map. Re-initializing.`);
+                cachedSubjects = new Map();
+            }
+
+            // Check if subject already exists by its unique key in the Map
+            if (!cachedSubjects.has(subjectKey)) {
+                cachedSubjects.set(subjectKey, data); // Store the full data object
+                // console.log(`Cache updated: Added subject: ${data.name} (ID: ${data.id})`);  // Uncomment for detailed logging
+            }
+            break;
+
+        case 'language':
+
+            // Validate data object for 'language'
+            if (!data || typeof data !== 'object' || data === null ||
+                typeof data.id !== 'number' || !Number.isInteger(data.id) ||
+                typeof data.language !== 'string' || data.language.trim() === '' ||
+                typeof data.key !== 'string' || data.key.trim() === '') {
+                console.warn(`updateCache: Invalid data object for 'language' type. Expected {id: number, language: string, key: string}. Skipping. Data:`, data);
+                return;
+            }
+
+            // Ensure cachedLanguages is initialized as a Map
+            if (!(cachedLanguages instanceof Map)) {
+                console.error(`updateCache: cachedLanguages is not initialized as a Map. Re-initializing.`);
+                cachedLanguages = new Map();
+            }
+
+            // Check if language already exists by its unique key in the Map
+            if (!cachedLanguages.has(data.key)) {
+                cachedLanguages.set(data.key, data); // Store the full data object
+                // console.log(`Cache updated: Added language: ${data.language} (Key: ${data.key})`); // Uncomment for detailed logging
+            }
+            break;
+    }
+}
+
+export async function updateTrendingReelData(period, desiredLimit = 20) {
+    console.log('> Starting trending cache update...')
     try {
-        const [statuses, subjects, olids, languages] = await Promise.all([
+        if (!period) {
+            console.error('updateSubjectReelData: Missing period. This call requires a period to be passed')
+            throw new Error('updateSubjectReelData: no period was provided')
+        }
+
+        // fetch Trend data from the database (if it exists)
+        const latestEntriesFromDb = await getTrendingBooksReelData(period);
+        const currentDate = new Date();
+
+        let hoursBeforeRefresh;
+        switch (period) {
+            case 'hourly':
+                hoursBeforeRefresh = 1;
+                break;
+            case 'daily':
+                hoursBeforeRefresh = 24;
+                break;
+            default:
+                console.warn(`   ...Unknown trending period '${period}'. Skipping update.`);
+                return;
+        }
+
+        let needsDataFetchFromOL = false;
+        let dataToCacheAndDb = null;
+        let latestDbEntryForPeriod = null; // Initialize to null
+
+        if (latestEntriesFromDb && latestEntriesFromDb.length > 0) {
+            // Only attempt to find the specific period's entry if there's any data from DB
+            latestDbEntryForPeriod = latestEntriesFromDb.find(entry => entry.period === period);
+
+            if (latestDbEntryForPeriod) {
+                // If an entry for the specific period is found, check its staleness
+                const latestDbEntryDate = new Date(latestDbEntryForPeriod.last_updated);
+                const hoursSinceLastDbUpdate = Math.floor(Math.abs(currentDate.getTime() - latestDbEntryDate.getTime()) / 36e5);
+
+                if (hoursSinceLastDbUpdate >= hoursBeforeRefresh) {
+                    console.log(`   Cached database data for period '${period}' is stale (${hoursSinceLastDbUpdate} hours old). Refreshing from OL.`);
+                    needsDataFetchFromOL = true;
+                } else {
+                    console.log(`   Cached database data for period '${period}' is fresh (${hoursSinceLastDbUpdate} hours old). Updating in-memory cache from DB.`);
+
+                    cachedTrending = {
+                        data: latestDbEntryForPeriod.data,
+                        lastUpdate: currentDate
+                    };
+
+                }
+            } else {
+                // If getTrendingBooksReelData returned data, but no entry for THIS period was found
+                console.log(`   No cached entry for period '${period}' found in existing database data. Will fetch new data from OL.`);
+                needsDataFetchFromOL = true;
+            }
+        } else {
+            // This block executes if getTrendingBooksReelData returned null or an empty array
+            console.log(`   No cached data found in database. Initial fetch from Open Library for period '${period}'.`);
+            needsDataFetchFromOL = true;
+        }
+
+        if (needsDataFetchFromOL) {
+            console.log(`   Attempting to fetch new trending data from Open Library`);
+            try {
+                const rawTrendingDataFromOL = await ol.getOlData('trending');
+
+                // Ensure data is an array and not empty before processing
+                if (Array.isArray(rawTrendingDataFromOL) && rawTrendingDataFromOL.length > 0) {
+                    dataToCacheAndDb = rawTrendingDataFromOL.slice(0, desiredLimit);
+
+                    // Process each item in the fetched array to get cover URLs
+                    for (const work of dataToCacheAndDb) {
+                        let imageUrl = '';
+
+                        // console.log(work.editions)
+                        // Check for cover_edition_key (string) or cover_i (number) or the search and check the first edition in the docs
+                        if (typeof work.cover_edition_key === 'string' && work.cover_edition_key.length > 0) {
+                            imageUrl = "https://covers.openlibrary.org/b/olid/" + work.cover_edition_key + "-M.jpg";
+                            // } else if ( typeof work.docs[0].cover ){
+
+                        } else if (typeof work.cover_i === 'number' && work.cover_i > 0) {
+                            imageUrl = "https://covers.openlibrary.org/b/id/" + work.cover_i + "-M.jpg";
+                        } else {
+                            const findImageSearch = await ol.getOlData('search', work.title, 1, language)
+                            const findImageSearchData = findImageSearch.docs[0];
+
+                            if (typeof findImageSearchData.cover_edition_key === 'string' && findImageSearchData.cover_edition_key.length > 0) {
+                                imageUrl = "https://covers.openlibrary.org/b/olid/" + findImageSearchData.cover_edition_key + "-M.jpg";
+                            } else if (typeof findImageSearchData.cover_i === 'number' && findImageSearchData.cover_i > 0) {
+                                imageUrl = "https://covers.openlibrary.org/b/id/" + findImageSearchData.cover_i + "-M.jpg";
+                            }
+                        }
+
+                        // Assign the generated URL to work.cover_url if a valid URL was created
+                        if (imageUrl) {
+                            work.cover_url = await fh.getOlImage('edition', imageUrl);
+                        } else {
+                            // Set a default placeholder or null if no cover could be found
+                            work.cover_url = null;
+                        } 
+
+                        // Assign work_olid
+                        work.work_olid = utils.formatPrefix('works', [{
+                            key: work.key
+                        }]);
+
+                    }
+                    console.log(`   + Successfully processed and fetched new data for period '${period}'.`);
+
+                } else {
+                    console.warn(`   - ol.getOlData('trending') returned empty or non-array data for period '${period}'.`);
+                    // If OL returns no data, try to use existing DB data if any.
+                    if (latestDbEntryForPeriod) {
+                        cachedTrending = {
+                            data: latestDbEntryForPeriod.data,
+                            lastUpdate: currentDate
+                        };
+                        console.log(`   Reverted to previous database cache for period '${period}' due to empty OL fetch.`);
+                    } else {
+                        cachedTrending = null; // No prior data, in-memory cache remains empty
+                    }
+                    return; // Exit, nothing to update DB with
+                }
+            } catch (olError) {
+                console.error(`Failed to fetch trending data from Open Library for period '${period}'. Using existing cache if available.`, olError);
+                // If OL fetch fails, and we have existing DB data, use that to keep cache populated.
+                if (latestDbEntryForPeriod) {
+                    cachedTrending = {
+                        data: latestDbEntryForPeriod.data,
+                        lastUpdate: currentDate
+                    };
+
+                    console.log(`Reverted to previous database cache for period '${period}' due to OL fetch failure.`);
+                } else {
+                    cachedTrending = null; // No prior data, in-memory cache remains empty
+                }
+                return; // Exit this update attempt, preventing database operation on potentially bad data
+            }
+
+            // Update the in-memory cache with the new, processed data
+            cachedTrending = {
+                data: dataToCacheAndDb, // This is the processed array of objects
+                lastUpdate: currentDate
+            };
+
+            // Database Upsert Logic (remains largely the same, assuming 'period' is UNIQUE)
+            const upsertQuery = `
+                INSERT INTO cached_trending_data (period, data, last_updated)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (period) DO UPDATE
+                SET data = EXCLUDED.data, last_updated = EXCLUDED.last_updated;
+            `;
+            // Ensure data is stringified for DB storage
+            const upsertData = [period, JSON.stringify(dataToCacheAndDb)];
+
+            try {
+                await database.query(upsertQuery, upsertData);
+                console.log(`Database and in-memory cache updated for period '${period}'.`);
+            } catch (dbError) {
+                console.error(`Failed to update database for period '${period}'. In-memory cache may be newer.`, dbError);
+                // Error logged, but no re-throw to keep the server running. In-memory cache is still fresh.
+            }
+        }
+        console.log('   ...Trending cache update complete')
+
+    } catch (error) {
+        console.error(`Error updating trending data into database:`, error);
+        throw error;
+    }
+}
+
+export async function updateSubjectReelData(subject, language = null, desiredLimit = 10) {
+
+    try {
+
+        if (!subject) {
+            console.error('updateSubjectReelData: Missing subject. This call requires a subject to be passed')
+            throw new Error('updateSubjectReelData: no subject was provided')
+        }
+        console.log(`> Starting subject: ${subject} cache update...`)
+
+        // fetch Subject data from the database (if it exists)
+        language = language || "eng";
+        const latestEntriesFromDb = await getSubjectsReelData(subject, language);
+        const currentDate = new Date();
+
+        let hoursBeforeRefresh = 1;
+
+        let needsDataFetchFromOL = false;
+        let dataToCacheAndDb = null;
+
+        if (latestEntriesFromDb) {
+            // If an entry is found, check its staleness
+            const latestDbEntryDate = new Date(latestEntriesFromDb.last_updated);
+            const hoursSinceLastDbUpdate = Math.floor(Math.abs(currentDate.getTime() - latestDbEntryDate.getTime()) / 36e5);
+
+            if (hoursSinceLastDbUpdate >= hoursBeforeRefresh) {
+                console.log(`   Cached database data for subject '${subject}' is stale (${hoursSinceLastDbUpdate} hours old). Refreshing from OL.`);
+                needsDataFetchFromOL = true;
+            } else {
+                console.log(`   Cached database data for subject '${subject}' is fresh (${hoursSinceLastDbUpdate} hours old). Updating in-memory cache from DB.`);
+
+                cachedBrowseSubjects[subject] = {
+                    data: latestEntriesFromDb.data,
+                    lastUpdate: currentDate
+                };
+
+            }
+
+        } else {
+            // This block executes if updateSubjectReelData returned null or an empty array
+            console.log(`   No cached data found in database. Initial fetch from Open Library for subject '${subject}'.`);
+            needsDataFetchFromOL = true;
+        }
+
+        if (needsDataFetchFromOL) {
+            console.log(`   Attempting to fetch new subject data from Open Library`);
+            try {
+                const rawSubjectDataFromOL = await ol.getOlData('subject', subject, 1, language, desiredLimit);
+                // Ensure data is an array and not empty before processing
+                if (Array.isArray(rawSubjectDataFromOL.docs) && rawSubjectDataFromOL.docs.length > 0) {
+                    dataToCacheAndDb = rawSubjectDataFromOL.docs;
+
+                    // Process each item in the fetched array to get cover URLs
+                    for (const work of dataToCacheAndDb) {
+                        let imageUrl = '';
+
+                        // Check for cover_edition_key (string) or cover_i (number) or the search and check the first edition in the docs
+                        if (typeof work.cover_edition_key === 'string' && work.cover_edition_key.length > 0) {
+                            imageUrl = "https://covers.openlibrary.org/b/olid/" + work.cover_edition_key + "-M.jpg";
+
+                        } else if (typeof work.cover_i === 'number' && work.cover_i > 0) {
+                            imageUrl = "https://covers.openlibrary.org/b/id/" + work.cover_i + "-M.jpg";
+                        } else {
+                            const findImageSearch = await ol.getOlData('search', work.title, 1, language)
+                            const findImageSearchData = findImageSearch.docs[0];
+
+                            if (typeof findImageSearchData.cover_edition_key === 'string' && findImageSearchData.cover_edition_key.length > 0) {
+                                imageUrl = "https://covers.openlibrary.org/b/olid/" + findImageSearchData.cover_edition_key + "-M.jpg";
+                            } else if (typeof findImageSearchData.cover_i === 'number' && findImageSearchData.cover_i > 0) {
+                                imageUrl = "https://covers.openlibrary.org/b/id/" + findImageSearchData.cover_i + "-M.jpg";
+                            }
+                        }
+
+                        // Assign the generated URL to work.cover_url if a valid URL was created
+                        if (imageUrl) {
+                            work.cover_url = await fh.getOlImage('edition', imageUrl);
+                        } else {
+                            // Optionally, set a default placeholder or null if no cover could be found
+                            work.cover_url = null;
+                        }
+
+                        // Assign work_olid
+                        work.work_olid = utils.formatPrefix('works', [{
+                            key: work.key
+                        }]);
+
+                    }
+                    console.log(`   + Successfully processed and fetched new data for subject (${subject}).`);
+
+                } else {
+                    console.warn(`   - ol.getOlData('subject') returned empty or non-array data for subject (${subject}).`);
+                    // If OL returns no data, try to use existing DB data if any.
+                    if (latestEntriesFromDb) {
+                        cachedBrowseSubjects[subject] = {
+                            data: latestEntriesFromDb,
+                            lastUpdate: currentDate
+                        };
+                        console.log(`   Reverted to previous database cache for subject (${subject}) due to empty OL fetch.`);
+                    } else {
+                        cachedBrowseSubjects[subject] = {
+                            data: [], // No prior data, in-memory cache remains empty
+                            lastUpdate: currentDate
+                        }
+                    }
+                    return; // Exit, nothing to update DB with
+                }
+            } catch (olError) {
+                console.error(`Failed to fetch data from Open Library for subject (${subject}). Using existing cache if available.`, olError);
+                // If OL fetch fails, and we have existing DB data, use that to keep cache populated.
+                if (latestEntriesFromDb) {
+                    cachedBrowseSubjects[subject] = {
+                        data: latestEntriesFromDb.data,
+                        lastUpdate: currentDate
+                    };
+
+                    console.log(`Reverted to previous database cache for subject (${subject}) due to OL fetch failure.`);
+                } else {
+                    cachedBrowseSubjects[subject] = {
+                        data: [], // No prior data, in-memory cache remains empty
+                        lastUpdate: currentDate
+                    }
+                }
+                return; // Exit this update attempt, preventing database operation on potentially bad data
+            }
+
+            // Update the in-memory cache with the new, processed data
+            cachedBrowseSubjects[subject] = {
+                data: dataToCacheAndDb, // This is the processed array of objects
+                lastUpdate: currentDate
+            };
+
+            // Database Upsert Logic (remains largely the same, assuming 'period' is UNIQUE)
+            const upsertQuery = `
+                INSERT INTO cached_subject_data (subject_name, language, data, last_updated)
+                VALUES ($1, $2, $3, NOW())
+                ON CONFLICT (subject_name, language) DO UPDATE
+                SET data = EXCLUDED.data, last_updated = EXCLUDED.last_updated;
+            `;
+            // Ensure data is stringified for DB storage
+            const upsertData = [subject, language, JSON.stringify(dataToCacheAndDb)];
+
+            try {
+                await database.query(upsertQuery, upsertData);
+                console.log(`   Database and in-memory cache updated for subject '${subject}'.`);
+            } catch (dbError) {
+                console.error(`   ...Failed to update database for subject '${subject}'. In-memory cache may be newer.`, dbError);
+                // Error logged, but no re-throw to keep the server running. In-memory cache is still fresh.
+            }
+        }
+        console.log(`   ...subject (${subject}) cache update complete`)
+
+    } catch (error) {
+        console.error(`Error updating subject (${subject}) data into database:`, error);
+        throw error;
+    }
+}
+
+export async function updateLanguages() {
+    try {
+        console.log("> Starting language cache update...");
+        // 1. Get all languages currently in your database
+        const dbLanguages = await getLanguages();
+
+        // 2: Populate the in-memory cache with languages already in the database.
+        // Re-initialize cachedLanguages as a Map before populating from DB to ensure it's a Map
+        cachedLanguages.clear(); // Clear existing entries in the Map
+        console.log(`   Populating in-memory cache with ${dbLanguages.length} existing languages...`);
+        dbLanguages.forEach(dbLang => {
+            const languageToCache = {
+                ...dbLang,
+                id: parseInt(dbLang.id)
+            };
+            cachedLanguages.set(languageToCache.key, languageToCache); // Add to Map using 'key' as the Map key
+        });
+
+        console.log("   In-memory language cache populated with existing data.");
+
+        // Create a Set for efficient lookup of existing language keys
+        const dbLanguageKeys = new Set(dbLanguages.map(lang => lang.key)); // This Set is temporary for this function
+
+
+        // 3. Get all languages from Open Library
+        const olLanguages = await ol.getOlData('languages');
+        console.log(`   Fetched ${olLanguages.length} languages from Open Library.`);
+
+        const languagesToInsert = []; // This will hold the language objects to insert (just key and language for postOlLanguages)
+
+        // 4. Identify new languages not in the database
+        olLanguages.forEach(olLang => {
+            // Defensive check: ensure olLang and olLang.key exist and are strings
+            if (olLang && typeof olLang.key === 'string' && typeof olLang.language === 'string') {
+                if (!dbLanguageKeys.has(olLang.key)) {
+                    languagesToInsert.push({
+                        language: olLang.language,
+                        key: olLang.key
+                    });
+                }
+            } else {
+                console.warn('  *Skipping malformed Open Library language object during update:', olLang);
+            }
+        });
+
+        // 5. Perform a batch insertion for all new languages
+        if (languagesToInsert.length > 0) {
+            console.log(`   Found ${languagesToInsert .length} new languages to insert into the database.`);
+            try {
+                const newlyInsertedLanguages = await postOlLanguages(languagesToInsert);
+                console.log(`   Successfully inserted ${newlyInsertedLanguages.length} new languages into the database and cache.`);
+            } catch (error) {
+                console.error(`  *Failed to batch insert languages:`, error.message);
+                throw error;
+            }
+        } else {
+            console.log("   All Open Library languages already exist in the database. No new languages to insert.");
+        }
+
+        console.log("   ... Language cache update successful.");
+
+    } catch (error) {
+        console.error('  *Error during language cache update in updateLanguages:', error);
+        throw error;
+    }
+}
+
+export function logCurrentCache() {
+    console.log('--- Current Cache Status ---');
+
+    console.log('Cached Olids:');
+    // For Sets, we can directly log their size and then convert to an array for display if needed.
+    console.log(`  Editions (${cachedOlids.editions.size}): ${[...cachedOlids.editions].join(', ')}`);
+    console.log(`  Works (${cachedOlids.works.size}): ${[...cachedOlids.works].join(', ')}`);
+    console.log(`  Authors (${cachedOlids.authors.size}): ${[...cachedOlids.authors].join(', ')}`);
+
+    console.log('\nCached Subjects:');
+    // For Maps, convert values to an array for console.table
+    // Make sure the objects in the map have an 'id' or a unique key for console.table to group by.
+    // If you want to index by original ID, you'd need to rebuild the object.
+    // The previous reduce was designed for arrays. For Maps, iterate values directly.
+    const transformedCachedSubjects = {};
+    Array.from(cachedSubjects.values()).forEach(subject => {
+        if (subject.id) { // Ensure subject has an ID to use as key in the object
+            const {
+                id,
+                ...rest
+            } = subject;
+            transformedCachedSubjects[id] = rest;
+        } else {
+            // Fallback if id is missing, use a generated key or just push to an array
+            console.warn("Subject in cache missing 'id', logging without ID key:", subject);
+            //transformedCachedSubjects[`${subject.name}|${subject.type || ''}`] = subject;
+        }
+    });
+    // Only call console.table if there are subjects to display
+    if (Object.keys(transformedCachedSubjects).length > 0) {
+        console.table(transformedCachedSubjects);
+    } else {
+        console.log('  (empty)');
+    }
+
+
+    console.log('\nCached Statuses:');
+    // cachedStatuses is still an array, so your original reduce logic applies
+    const transformedCachedStatuses = cachedStatuses.reduce((statuses, {
+        id,
+        ...x
+    }) => {
+        statuses[id] = x;
+        return statuses
+    }, {});
+    if (Object.keys(transformedCachedStatuses).length > 0) {
+        console.table(transformedCachedStatuses);
+    } else {
+        console.log('  (empty)');
+    }
+
+    console.log('\nCached Languages:');
+    // For Maps, similar to subjects, convert values to an array for console.table
+    const transformedCachedLanguages = {};
+    Array.from(cachedLanguages.values()).forEach(language => {
+        if (language.id) { // Ensure language has an ID
+            const {
+                id,
+                ...rest
+            } = language;
+            transformedCachedLanguages[id] = rest;
+        } else {
+            console.warn("Language in cache missing 'id', logging without ID key:", language);
+            //transformedCachedLanguages[language.key] = language;
+        }
+    });
+    if (Object.keys(transformedCachedLanguages).length > 0) {
+        console.table(transformedCachedLanguages);
+    } else {
+        console.log('  (empty)');
+    }
+
+    console.log('--- End Cache Status ---');
+}
+
+export async function initDbAndCache(subjects = [], subjectLanguage, subjectReelLength) {
+    try {
+        console.log(`\nInitializing database and in-memory caches...`);
+
+
+        // initialize core caches
+        const [statuses, subjectsFromDb, olidsFromDb] = await Promise.all([
             getStatuses(),
             getSubjects(),
             getOlids(),
-            // For operations that depend on each other, chain them within the Promise.all
-            (async () => {
-                await updateLanguages();
-                return getLanguages();
-            })()
         ]);
-        cachedStatuses = statuses;
-        cachedSubjects = subjects;
-        cachedOlids = olids;
-        cachedLanguages = languages;
 
-        //TEST AREA
-        //  console.log(await getEditionLanguages('OL51694024M'));
+        // Populate cachedStatuses
+        console.log("> Starting status cache update...");
+        cachedStatuses = statuses;
+        console.log(`    ... status cache update complete.`);
+
+        // Populate cachedSubjects (convert to Map)
+        console.log("> Starting subjects cache update...");
+        cachedSubjects.clear();
+        cachedSubjects = new Map();
+        console.log(`    Populating in-memory cache with ${subjectsFromDb.length} existing subjects...`);
+        subjectsFromDb.forEach(subject => {
+            const key = `${subject.name}|${subject.type || '--Ungrouped--'}`;
+            cachedSubjects.set(key, subject);
+        });
+        // console.log(`    ${cachedSubjects.size} subjects loaded.`);
+
+        console.log(`    ... subjects cache update complete.`);
+
+        // Populate cachedOlids (Sets)
+        cachedOlids.editions.clear(); // Clear existing to ensure fresh populate
+        cachedOlids.works.clear();
+        cachedOlids.authors.clear();
+        console.log("> Starting olid cache update...");
+        if (olidsFromDb && olidsFromDb.editions && Array.isArray(olidsFromDb.editions)) {
+
+            olidsFromDb.editions.forEach(olid => cachedOlids.editions.add(olid));
+        } else {
+            console.warn("initDbAndCache: getOlids() did not return expected 'editions' array. Cached editions may be incomplete.");
+        }
+        if (olidsFromDb && olidsFromDb.works && Array.isArray(olidsFromDb.works)) {
+            olidsFromDb.works.forEach(olid => cachedOlids.works.add(olid));
+        } else {
+            console.warn("initDbAndCache: getOlids() did not return expected 'works' array. Cached works may be incomplete.");
+        }
+        if (olidsFromDb && olidsFromDb.authors && Array.isArray(olidsFromDb.authors)) {
+            olidsFromDb.authors.forEach(olid => cachedOlids.authors.add(olid));
+        } else {
+            console.warn("initDbAndCache: getOlids() did not return expected 'authors' array. Cached authors may be incomplete.");
+        }
+        console.log(`    ... olid cache update complete.`);
+
+        // This function updates the DB from OL, and updates cachedLanguages Map.
+        await updateLanguages()
+        await updateTrendingReelData('daily')
+        for (const subject of subjects) {
+            await updateSubjectReelData(subject, subjectLanguage, subjectReelLength)
+        }
+        console.log('+ Database caches populated successfully.');
     } catch (error) {
-        console.error('Failed to initialize database caches:', error);
-        throw error; // Re-throw to propagate the error and prevent server start
+        console.error(' *Failed to initialize database caches:', error);
+        throw error;
     }
 }

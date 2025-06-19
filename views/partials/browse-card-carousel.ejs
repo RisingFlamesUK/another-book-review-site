@@ -1,0 +1,14 @@
+<!-- views/partials/browse-card-carousel.ejs -->
+
+  <div class="carousel-holder flex vertical">
+    <div id="<%= carouselTitle.toLowerCase() %>-title" class="carousel-title">
+      <b><%= locals?.carouselTitle %></b>
+    </div>
+
+    <div class="carousel" mask>
+      
+      <% if (locals.cards) { for (const card of cards) { %>
+      <%- include("browse-card.ejs", card); %>
+      <% }} %>
+    </div>
+  </div>

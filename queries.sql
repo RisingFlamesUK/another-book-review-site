@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS cached_subject_data;
+DROP TABLE IF EXISTS cached_trending_data;
 DROP TABLE IF EXISTS book_review;
 DROP TABLE IF EXISTS book_notes;
 DROP TABLE IF EXISTS users_books;
@@ -49,7 +51,7 @@ CREATE TABLE subjects (
 CREATE TABLE languages (
     id BIGSERIAL PRIMARY KEY,
     language TEXT NOT NULL,
-    key TEXT NOT NULL
+    key TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE book_works (
@@ -138,10 +140,26 @@ CREATE TABLE book_review (
     user_book_id INTEGER REFERENCES users_books (id) ON DELETE
     SET
         NULL,
-        review TEXT NOT NULL,
+        review TEXT,
         score INTEGER,
         created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
         last_modified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE cached_trending_data (
+    id SERIAL PRIMARY KEY,
+    period TEXT UNIQUE NOT NULL, -- e.g., 'hourly', 'daily', 'weekly', 'monthly'
+    data JSONB NOT NULL,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE cached_subject_data (
+    id SERIAL PRIMARY KEY,
+    subject_name TEXT NOT NULL, -- e.g., 'Fantasy', 'History', 'Science Fiction'
+    language TEXT,
+    data JSONB NOT NULL,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UNIQUE (subject_name, language)
 );
 
 -- Populate the status table --
