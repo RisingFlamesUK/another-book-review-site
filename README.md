@@ -11,6 +11,13 @@ All password data is encrypted by the database. I recommend altering the code to
 I use a combination of APIs provided by Open Library:
 https://openlibrary.org/developers/api
 
+TO DO:
+--> build a works page that allows the user to pick an edition from a selected works
+--> complete the edition page to allow reviews to be added and for the user to see others' reviews (scoring is already there) 
+--> add search funcitionality to browse (need a search results page)
+--> stretch goal: add advanced search to allow additional options in search
+--> stretch goal: surface multi-language support
+--> stretch goal: add user profile management (inc picture)
 
 ---------
 Using the code
