@@ -1,0 +1,54 @@
+<!-- views/partials/review.ejs -->
+
+<% if (reviewData) { %>
+<% // Formatting display variables
+  let rawReviewDateString = reviewData.created;
+  let rawReviewModifiedString = reviewData.last_modified;
+
+  const descriptiveDateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+  const rawReviewDate = new Date(rawReviewDateString);
+  let reviewDate = new Intl.DateTimeFormat(undefined, descriptiveDateOptions).format(rawReviewDate);
+  let reviewModified = new Intl.DateTimeFormat(undefined, descriptiveDateOptions).format(new Date(rawReviewModifiedString));
+  if (reviewDate == reviewModified) {
+    reviewModified = null;
+} %>
+
+<% //console.log('DEBUG review.ejs: reviewData:',reviewData) %>
+<% const isMe = isUserReview; %>
+<div class="review-card flex vertical" data-review-id="<%= reviewData.review_id %>" data-initialscore="<%= reviewData.score %>" data-initialtitle="<%= reviewData.review_title %>" data-initialreview="<%= reviewData.review %>">
+  <div class="flex justify-between align-center">
+    <div class="review-user">
+      <%- userImage
+          ? `<img src="${userImage}" alt="${reviewData.username}">`
+          : '<i class="bi bi-person-circle"></i>' %>
+      <span><%= reviewData.username %></span>
+    </div>
+    <% if (isMe) { %> <div><i>(My Review</i>)</div><button class="edit-review-button">Edit</button><% } %>
+
+  </div>
+  <div class="review-score">
+    <% if (isMe) { %>
+    <div class="user-rating-wrapper" data-edition-olid="<%= edition.edition_olid %>" data-work-olid="<%= edition.work_olid %>">
+      <div class="user-stars-container" data-original-score="<%= reviewData.score %>">
+        <%- processUserScore(reviewData.score, 5, false) %>
+      </div>
+    </div>
+    <% } else { %>
+    <%- scoreToStars(reviewData.score) %>
+    <% } %>
+  </div>
+  <div class="review-title">
+    <h4><i><strong><%= reviewData.review_title %></strong></i></h4>
+  </div>
+  <div class="review-date">
+    <span>Reviewed on: <%= reviewDate %></span>
+    <% if (reviewModified) { %>
+    <span>(Last modified: <%= reviewModified %>)</span>
+    <% } %>
+  </div>
+  <div class="review-text">
+    <%- reviewData.review %>
+  </div>
+
+</div>
+<% } %>

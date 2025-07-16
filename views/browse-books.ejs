@@ -23,9 +23,13 @@
 
       </div>
       <div class="flex-third flex justify-right padding-x10">
-        <p>Search:
-
-        </p>
+        <form action="/search" method="get" class="search-form flex align-center">
+          <label for="search" class="margin-right-5">Search:</label>
+          <input type="text" id="search" name="q" placeholder="Title, author, subject..." class="search-input" />
+          <button type="submit" class="search-button margin-left-5">
+            <i class="bi bi-search"></i>
+          </button>
+        </form>
       </div>
     </div>
   </div>

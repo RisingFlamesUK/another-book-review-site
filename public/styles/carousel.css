@@ -1,8 +1,41 @@
+.book-title-hover-box {
+    position: absolute;
+    top: 0; 
+    left: 0;
+    right: 0;
+    bottom: 0; 
+    padding: 5px;
+    background-color: rgba(0, 0, 0, 0.637);
+    opacity: 0; /* Initially hidden */
+    visibility: hidden; /* Also hide from screen readers when not visible */
+    transition: opacity 0.3s ease-out, visibility 0.3s ease-out; /* Smooth fade effect */
+    z-index: 15;
+    border-radius: inherit; /* Inherit border-radius from .work-card if it has any */
+}
+
+.book-title-hover-text {
+    background-color: rgba(0, 0, 0);
+    border-radius: 5px;
+    padding: 15px;
+    font-size: 1em;
+    font-weight: bold;
+    color: white;
+    text-align: center;
+    box-sizing: border-box; /* Include padding in the element's total size */
+    white-space: normal; /* Allow text to wrap if it's too long */
+    text-overflow: ellipsis; /* Add "..." if text is clipped after wrapping (requires fixed height) */
+    overflow: hidden; /* Hide any text that still overflows after wrapping */
+}
+
+.work-card:hover .book-title-hover-box {
+    opacity: 1;
+    visibility: visible;
+}
+
 .browse-books-content {
     max-width: 1400px;
     justify-self: center;
 }
-
  
 .carousel-holder {
  padding: 20px 30px;
@@ -21,6 +54,19 @@
 .browse-card-holder-container {
     width: 100%;
     position: relative;
+}
+
+.work-card {
+    position: relative;
+    box-shadow: 8px 8px 8px #555;
+}
+
+.browse-work-score {
+    position: absolute;
+    bottom: 10px;
+    right: 7px;
+    background-color: white;
+    z-index: 11;
 }
 
 .missing-cover-container {
@@ -74,6 +120,7 @@
         --items: 15;
         --carousel-duration: 140s;
         --carousel-padding: 20px;
+        font-size: large;
 
 
         @media (width > 600px) {
@@ -119,7 +166,7 @@
         top: 0;
         left: calc(100% - var(--carousel-item-gap));
         width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
-        height: calc(var(--carousel-item-height) - 2 * var(--carousel-item-padding));
+        height: calc(var(--carousel-item-height)); /* - 2 * var(--carousel-item-padding) */
         max-height: 300px;
         display: grid;
         grid-template-rows: calc(var(--carousel-item-height));
@@ -127,7 +174,7 @@
         /* border: 1px solid light-dark(rgba(0 0 0 / 0.25), rgba(255 255 255 / 0.15)); */
 
         /* padding-block-end: 1rem; */
-        padding: var(--carousel-item-padding);
+        padding: 0 var(--carousel-item-padding);
         border-radius: 10px;
         /* background: light-dark(rgba(70, 45, 14, 0.527), rgba(255 255 255 / 0.05)); */
         /* color: light-dark(rgb(49, 65, 88), white); */
@@ -203,7 +250,7 @@
 
     .carousel img {
         width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
-        height: calc(var(--carousel-item-height) - 2 * var(--carousel-item-padding));
+        height: calc(var(--carousel-item-height));  /* - 2 * var(--carousel-item-padding) */
         object-fit: contain;
         background-color: white;
 

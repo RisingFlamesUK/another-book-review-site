@@ -1,24 +1,38 @@
 <!-- views/partials/card-carousel.ejs -->
 
 <browse-book>
+  <a href="/works/prepare/<%= locals.work_olid %>?cover_url=<%= encodeURIComponent(locals.cover_url || '') %>">
+    <div class="work-card">
+      <% //console.log ('DEBUG: card-carousel locals: ', locals) %>
+      <% if (locals.cover_url) { %>
 
-  <% if (locals.cover_url) { %>
-  <a href="/works/<%= locals.work_olid %>">
-    <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image">
-  </a>
-  <% } else { %>
-  <a class="missing-cover-link" href="/works/<%= locals.work_olid %>">
-    <div class="missing-cover-container">
-      <img src="/assets/images/book placeholder.webp" alt="<%= title %> Book Cover Image">
+      <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image">
+      <% } else { %>
 
-      <div class="missing-cover-overlay flex vertical align-center">
-        
-        <p class="missing-cover-title"><%= locals.title %></p>
-        <p class="missing-cover-text"><i>(Cover unavailable)</i></p>
+      <div class="missing-cover-container">
+        <img src="/assets/images/book placeholder.webp" alt="<%= title %> Book Cover Image">
 
+        <div class="missing-cover-overlay flex vertical align-center">
+
+          <p class="missing-cover-title"><%= locals.title %></p>
+          <p class="missing-cover-text"><i>(Cover unavailable)</i></p>
+
+        </div>
       </div>
-    </div>
-  </a>
-  <% } %>
 
+      <% } %>
+      <div class="browse-work-score">
+        <% if (locals.averageScore) {  %>
+        <%- scoreToStars(averageScore) %>
+        <% } %>
+      </div>
+
+      <div class="book-title-hover-box flex justify-center align-center">
+        <div class="book-title-hover-text">
+        <%= locals.title %>
+        </div>
+    </div>
+    </div>
+
+  </a>
 </browse-book>

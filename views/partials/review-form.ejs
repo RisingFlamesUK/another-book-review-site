@@ -1,0 +1,45 @@
+<!-- views/partials/review-form.ejs -->
+<%
+  // Ensure default values for initial form data
+  const initialReviewId = locals.reviewId || '';
+  const initialTitle = locals.initialTitle || '';
+  const initialReview = locals.initialReview || '';
+  const initialScore = locals.initialScore || 0; // Default to 0 if no score
+%>
+
+<div class="review-form-card content-background">
+  <form id="reviewForm" data-review-id="<%= initialReviewId %>" class="flex vertical align-center">
+
+    <div id="review-form-title-score" class="flex justify-between align-center width-100">
+      <h3><%= initialReviewId ? 'Edit Your Review' : 'Add Your Review' %></h3>
+
+      <div id="review-form-score-container" class="form-group review-form-score-group flex align-center justify-center">
+        <label>Your Score:</label>
+        <div class="user-stars-container form-star-input" id="reviewStarPicker" data-original-score="<%= initialScore %>">
+          <div id="reviewStarIcons">
+            <!-- Stars go here -->
+          </div>
+        </div>
+        <input type="hidden" name="score" id="reviewFormScoreInput" value="<%= initialScore %>">
+        <span id="selected-star-score" class="margin-left10"><%= initialScore %></span>
+      </div>
+
+    </div>
+    <div class="form-group width-100 review-form-group">
+      <label for="reviewFormTitle">Review Title:</label>
+      <input type="text" id="reviewFormTitle" name="reviewTitle" value="<%= initialTitle %>" placeholder="A short title for your review (optional)">
+    </div>
+
+    <div class="form-group review-form-group review-form-group width-100">
+      <label for="reviewFormText">Your Review:</label>
+      <textarea id="reviewFormText" class="width-100" name="review" rows="8" placeholder="Share your thoughts on this edition..."><%= initialReview %></textarea>
+    </div>
+
+
+
+    <div id="review-form-buttons" class="flex justify-between margin-top20">
+      <button type="button" id="cancelReviewButton" class="button">Cancel</button>
+      <button type="submit" id="submitReviewButton" class="button">Submit Review</button>
+    </div>
+  </form>
+</div>

@@ -1,0 +1,17 @@
+<%- include("partials/header.ejs") %>
+
+<div class="search-results content-background padding-20">
+  <h2>Search Results for "<%= query %>"</h2>
+    <% console.log(locals.results.docs) %>
+  <% if (message) { %>
+    <p><%= message %></p>
+  <% } else { %>
+    <div class="card-grid">
+      <% results.forEach(result => { %>
+        <%- include('partials/browse-card.ejs', { card: result }) %>
+      <% }) %>
+    </div>
+  <% } %>
+</div>
+
+<%- include("partials/footer.ejs") %>

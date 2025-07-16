@@ -1,148 +1,261 @@
 // This file is /utils/file-handler.js
-import { promises as fsPromises } from 'fs';
-import { createWriteStream } from 'fs';
+import {
+    promises as fsPromises
+} from 'fs';
+import {
+    createWriteStream
+} from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+    fileURLToPath
+} from 'url';
 import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function getOlImage(imageType, imageUrl) {
-    console.log(`> getOlImage: Handling image: ${imageUrl}...`);
-    if (!imageUrl) {
-        console.warn(`   No image URL provided for type '${imageType}'. Skipping download.`);
-        return undefined;
-    }
-
-    const basePath = path.join(__dirname, '/../public/assets/images/');
-    const baseStoredURL = '/assets/images/';
-
-    let imageSubDir;
-    let openLibraryBaseUrl; // To store the appropriate Open Library base URL
-    let filename; // Will be determined based on whether imageUrl is local or remote
-
-    switch (imageType) {
-        case 'author':
-            imageSubDir = 'author';
-            openLibraryBaseUrl = 'https://covers.openlibrary.org/a/id/';
-            break;
-        case 'edition':
-            imageSubDir = 'edition';
-            openLibraryBaseUrl = 'https://covers.openlibrary.org/b/olid/';
-            break;
-        default:
-            throw new Error('- Invalid imageType. Must be "author" or "edition".');
-    }
-
-    const expectedLocalPrefix = baseStoredURL + imageSubDir + '/';
-    let currentImageUrl = imageUrl; // Use a mutable variable for the URL to process
-
-    // Handle local URLs and check for file existence
-    if (currentImageUrl.startsWith(baseStoredURL)) {
-        // Extract filename from the local path (e.g., "OL12345678M-L.jpg" or "9876543-M.jpg")
-        filename = path.basename(currentImageUrl);
-        const localFilePath = path.join(basePath, imageSubDir, filename);
-
-        try {
-            // Check if the local file actually exists on disk
-            await fsPromises.access(localFilePath, fsPromises.constants.F_OK);
-            console.log(`   ...getOlImage: File already downloaded: ${currentImageUrl}.`);
-            return currentImageUrl; // File exists locally, return its path
-        } catch (e) {
-            // Local file does not exist, reconstruct the Open Library (remote) URL
-            console.warn(`   getOlImage: Local file '${currentImageUrl}' not found. Downloading from Open Library.`);
-            currentImageUrl = `${openLibraryBaseUrl}${filename}`;
-        }
-    } else {
-        // If it's not a local path, assume it's a remote URL and proceed with parsing it
-        try {
-            const urlObj = new URL(currentImageUrl);
-            // Decode URI component to handle special characters in filename if any
-            filename = decodeURIComponent(path.basename(urlObj.pathname));
-        } catch (e) {
-            console.error(`   getOlImage: Invalid remote URL format provided: '${currentImageUrl}'. Error: ${e.message}`);
-            throw new Error(`- Failed to process image due to invalid remote URL format: ${currentImageUrl}`);
-        }
-    }
-
-    // At this point, currentImageUrl is either the original remote URL or a reconstructed remote URL
-    // and filename has been correctly extracted for use in local file paths.
-
-    const outputPath = path.join(basePath, imageSubDir, filename);
-    const tempPath = outputPath + '.tmp'; // Use a temporary extension
-    const storedURL = expectedLocalPrefix + filename; // Construct the full local URL for storage
+// Helper function to process a single image download
+// Returns an object with detailed status, including original input and localPath (if successful)
+async function _processSingleOlImage(imageType, olIdOrUrl, size = 'M') {
+    let remoteImageUrl;
+    let outputPath;
+    let storedURL;
+    let tempPath;
+    let baseFileName;
 
     try {
-        // 1. Ensure the target directory exists
-        const dirPath = path.dirname(outputPath);
-        await fsPromises.mkdir(dirPath, { recursive: true });
-
-        // 2. Check if the FINAL file already exists (this check is secondary now, but good for race conditions)
-        try {
-            await fsPromises.access(outputPath, fsPromises.constants.F_OK);
-            console.log(`   ...Image already exists locally (post-recheck): ${storedURL}`);
-            return storedURL; // File exists, no need to download
-        } catch (e) {
-            // Final file does not exist, proceed to check/clean temp file and download
+        if (!olIdOrUrl || olIdOrUrl === -1) {
+            return {
+                originalInput: olIdOrUrl,
+                status: 'skipped',
+                reason: `No valid Open Library ID or URL provided (value: ${olIdOrUrl})`,
+                remoteImageUrl: undefined,
+                localPath: undefined
+            };
         }
 
-        // Handle potential leftover temp files
-        try {
-            await fsPromises.access(tempPath, fsPromises.constants.F_OK);
-            console.log(`   Found a leftover temp file for ${filename}, attempting to delete...`);
-            await fsPromises.unlink(tempPath);
-            console.log(`   Leftover temp file ${filename}.tmp deleted.`);
-        } catch (e) {
-            // No temp file found, or unable to delete (e.g., permissions), proceed
+        if (typeof olIdOrUrl === 'string' && olIdOrUrl.startsWith('http')) {
+            const urlParts = new URL(olIdOrUrl);
+            const pathSegments = urlParts.pathname.split('/');
+            baseFileName = pathSegments[pathSegments.length - 1].split('?')[0];
+            remoteImageUrl = olIdOrUrl;
+        } else {
+            let idOrOlidPrefix;
+            if (imageType === 'author') {
+                idOrOlidPrefix = 'id';
+            } else if (imageType === 'edition') {
+                if (typeof olIdOrUrl === 'number' || (typeof olIdOrUrl === 'string' && !isNaN(Number(olIdOrUrl)) && !olIdOrUrl.startsWith('OL'))) {
+                    idOrOlidPrefix = 'id';
+                } else if (typeof olIdOrUrl === 'string' && olIdOrUrl.startsWith('OL')) {
+                    idOrOlidPrefix = 'olid';
+                } else {
+                    idOrOlidPrefix = 'id';
+                }
+            } else {
+                return {
+                    originalInput: olIdOrUrl,
+                    status: 'failed',
+                    reason: `Invalid imageType: ${imageType}`,
+                    remoteImageUrl: undefined,
+                    localPath: undefined
+                };
+            }
+            remoteImageUrl = `https://covers.openlibrary.org/b/${idOrOlidPrefix}/${olIdOrUrl}-${size}.jpg`;
+            baseFileName = `${olIdOrUrl}-${size}.jpg`;
         }
 
-        // 3. Fetch the image using axios
-        const response = await axios({
-            url: currentImageUrl, // Use currentImageUrl which might be the reconstructed remote URL
-            method: 'GET',
+        outputPath = path.join(__dirname, '..', 'public', 'assets', 'images', imageType, baseFileName);
+        storedURL = `/assets/images/${imageType}/${baseFileName}`;
+        tempPath = `${outputPath}.tmp`;
+
+        const outputDir = path.dirname(outputPath);
+        await fsPromises.mkdir(outputDir, {
+            recursive: true
+        });
+
+        try {
+            await fsPromises.access(outputPath);
+            return {
+                originalInput: olIdOrUrl,
+                status: 'cached',
+                reason: 'Already exists locally',
+                remoteImageUrl,
+                localPath: storedURL
+            };
+        } catch (err) {
+            // File does not exist locally, proceed to download
+        }
+
+        const response = await axios.get(remoteImageUrl, {
             responseType: 'stream',
+            timeout: 15000
         });
-
-        // Optional: Get expected content length for integrity check
-        const contentLength = parseInt(response.headers['content-length'], 10);
-
-        // 4. Create a writable stream to the TEMPORARY file
         const writer = createWriteStream(tempPath);
-        let downloadedBytes = 0;
 
-        response.data.on('data', (chunk) => {
-            downloadedBytes += chunk.length;
-        });
+        response.data.pipe(writer);
 
         await new Promise((resolve, reject) => {
-            response.data.pipe(writer);
-
             writer.on('finish', async () => {
-                // Final size check
-                if (!isNaN(contentLength) && downloadedBytes !== contentLength) {
-                    console.warn(`- Downloaded file size (${downloadedBytes} bytes) does not match Content-Length header (${contentLength} bytes) for ${currentImageUrl}.`);
+                try {
+                    const stats = await fsPromises.stat(tempPath);
+                    if (stats.size === 0) {
+                        await fsPromises.unlink(tempPath).catch(() => {});
+                        return reject(new Error('EMPTY_IMAGE_FILE'));
+                    }
+                    if (stats.size < 100) {
+                        await fsPromises.unlink(tempPath).catch(() => {});
+                        return reject(new Error('TOO_SMALL_IMAGE_FILE'));
+                    }
+
+                    await fsPromises.rename(tempPath, outputPath);
+                    resolve();
+                } catch (statErr) {
                     await fsPromises.unlink(tempPath).catch(() => {});
-                    return reject(new Error('Incomplete download based on Content-Length.'));
+                    return reject(new Error(`Failed to verify downloaded image size: ${statErr.message}`));
                 }
-                
-                // Atomically rename the temporary file to the final path
-                await fsPromises.rename(tempPath, outputPath);
-                console.log('   ...Image successfully downloaded and stored:', storedURL);
-                resolve();
             });
 
             writer.on('error', async (err) => {
-                console.error('Error writing the temporary file:', err);
                 await fsPromises.unlink(tempPath).catch(() => {});
-                reject(new Error(`- Failed to save image to temporary file ${tempPath}: ${err.message}`));
+                reject(new Error(`Failed to save image to temporary file: ${err.message}`));
             });
         });
 
-        return storedURL; // Return the URL after successful download and rename
+        return {
+            originalInput: olIdOrUrl,
+            status: 'downloaded',
+            reason: 'Successfully downloaded',
+            remoteImageUrl,
+            localPath: storedURL
+        };
 
     } catch (error) {
-        console.error(`- Error processing image from ${currentImageUrl} (${imageType}):`, error);
-        throw new Error(`Failed to download or process image for ${imageType}.`);
+        try {
+            if (tempPath) {
+                await fsPromises.unlink(tempPath);
+            }
+        } catch (cleanUpError) {
+            // Ignore if file doesn't exist or other cleanup error during cleanup
+        }
+
+        let reason = `Unexpected error: ${error.message}`;
+        let status = 'failed';
+        if (axios.isAxiosError(error)) {
+            if (error.response) {
+                reason = `HTTP Error ${error.response.status}: ${error.response.statusText}`;
+                if (error.response.status === 404) {
+                    status = 'not_found';
+                    reason = 'Image not found (404)';
+                }
+            } else if (error.request) {
+                reason = 'No response from API (Network error or Timeout)';
+            } else {
+                reason = `Error setting up request: ${error.message}`;
+            }
+        } else if (error.message === 'EMPTY_IMAGE_FILE') {
+            reason = 'Downloaded image file is empty';
+        } else if (error.message === 'TOO_SMALL_IMAGE_FILE') {
+            reason = 'Downloaded image file is too small';
+        }
+
+        return {
+            originalInput: olIdOrUrl,
+            status,
+            reason,
+            remoteImageUrl,
+            localPath: undefined // Explicitly undefined for failures
+        };
     }
+}
+
+/**
+ * Fetches and stores Open Library images locally if not already present.
+ * Can accept a single OL ID/URL or an array of OL IDs/URLs.
+ * Provides a summarized console log output.
+ *
+ * @param {'author' | 'edition'} imageType - The type of image ('author' or 'edition').
+ * @param {string | number | (string | number)[]} olIdOrUrls - A single Open Library ID/URL or an array of IDs/URLs.
+ * @param {'S' | 'M' | 'L'} size - The desired image size ('S', 'M', 'L').
+ * @returns {Promise<Object | Object[] | undefined>} - A detailed result object (for single input) or an array of detailed result objects (for array input). Returns undefined if input is empty.
+ * Each result object includes: { originalInput, status, reason, remoteImageUrl, localPath }.
+ */
+export async function getOlImage(imageType, olIdOrUrls, size = 'M') {
+    const isSingleInput = !Array.isArray(olIdOrUrls);
+    const idsToProcess = isSingleInput ? [olIdOrUrls] : olIdOrUrls;
+    const totalImages = idsToProcess.length;
+    console.log(``);
+    console.log('       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^');
+    console.log(`       *^                   getOlImage                    ^*`);
+    if (totalImages === 0) {
+
+        console.log(`       > getOlImage: No images provided for type: ${imageType}.`);
+        console.log(`       *^                End of getOlImage                ^*`);
+        console.log('       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^');
+        return isSingleInput ? undefined : [];
+    }
+
+    console.log(`       > getOlImage: Processing ${totalImages} images for type: ${imageType}...`);
+
+    const promises = idsToProcess.map(id => _processSingleOlImage(imageType, id, size));
+    const results = await Promise.all(promises);
+
+    const summary = {
+        totalProcessed: totalImages,
+        cached: 0,
+        downloadedSuccessfully: 0,
+        skipped: 0,
+        notFound: 0,
+        failed: {},
+        exampleFailedInputs: {},
+        exampleSkippedInputs: [],
+    };
+
+    results.forEach(res => {
+        if (res.status === 'cached') {
+            summary.cached++;
+        } else if (res.status === 'downloaded') {
+            summary.downloadedSuccessfully++;
+        } else if (res.status === 'skipped') {
+            summary.skipped++;
+            if (summary.exampleSkippedInputs.length < 5) { // Limit examples to avoid massive logs
+                summary.exampleSkippedInputs.push(res.originalInput);
+            }
+        } else if (res.status === 'not_found') {
+            summary.notFound++;
+            const reasonKey = 'Image not found (404)';
+            summary.failed[reasonKey] = (summary.failed[reasonKey] || 0) + 1; // Count under 'failed' for 404
+            if (!summary.exampleFailedInputs[reasonKey]) {
+                summary.exampleFailedInputs[reasonKey] = res.originalInput;
+            }
+        } else if (res.status === 'failed') {
+            // Use the specific reason from _processSingleOlImage
+            const reasonKey = res.reason;
+            summary.failed[reasonKey] = (summary.failed[reasonKey] || 0) + 1;
+            if (!summary.exampleFailedInputs[reasonKey]) {
+                summary.exampleFailedInputs[reasonKey] = res.originalInput;
+            }
+        }
+    });
+
+    console.log(`          getOlImage ${totalImages} images processing complete:`);
+    console.log(`              ${summary.cached} images already cached`);
+    console.log(`              ${summary.downloadedSuccessfully} images downloaded successfully`);
+    if (summary.skipped > 0) {
+        console.log(`              ${summary.skipped} images skipped due to invalid input. Example(s): ${summary.exampleSkippedInputs.join(', ')}`);
+    }
+
+    // Combine notFound and other failed reasons for a more detailed "failed" section
+    const allFailedReasons = Object.keys(summary.failed);
+    if (allFailedReasons.length > 0) {
+        console.log(`              Failed image downloads:`);
+        for (const reason in summary.failed) {
+            console.log(`                  ${summary.failed[reason]} images failed because ${reason}. Example input: ${summary.exampleFailedInputs[reason]}`);
+        }
+    }
+    console.log(``);
+    console.log(`       *^                End of getOlImage                ^*`);
+    console.log('       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^');
+
+    // Return the full results array, or a single result object if input was single
+    return isSingleInput ? results[0] : results;
 }

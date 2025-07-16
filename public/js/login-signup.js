@@ -1,4 +1,6 @@
+// public/js/login-signup.js
 document.addEventListener('DOMContentLoaded', () => {
+    const loginSignupOriginalPathname = window.location.pathname;
     const tabContainer = document.querySelector('.tab-container');
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabPanels = document.querySelectorAll('.tab-panel');
@@ -39,10 +41,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 const targetPanelId = button.dataset.tab;
                 showPanel(targetPanelId);
                 activateTabButton(button);
+
+                // IMPORTANT: When updating the hash on tab click,
+                // use the `loginSignupOriginalPathname` to ensure the URL always
+                // refers to the actual login-signup page path, not the replaced
+                // path from the history entry.
+                const newUrl = loginSignupOriginalPathname + window.location.search + '#' + targetPanelId;
+                history.replaceState(null, '', newUrl);
+                console.log("[DEBUG] login-signup.js (Tab Click): URL hash updated in address bar and history to: " + newUrl);
+          
             });
         });
 
-        if (initialTab) {
+        // Initialize active tab on page load
+        // Get the hash from the *actual address bar*. This will be either '#login', '#signup'
+        // or empty/null if the EJS script successfully cleaned it up on initial load.
+        // This logic focuses on *displaying* the correct tab, not manipulating history.
+        const hashFromAddressBar = window.location.hash.replace('#', '');
+        if (hashFromAddressBar === 'login' || hashFromAddressBar === 'signup') {
+            showPanel(hashFromAddressBar);
+            const initialActiveButton = document.querySelector(`.tab-button[data-tab="${hashFromAddressBar}"]`);
+            if (initialActiveButton) {
+                activateTabButton(initialActiveButton);
+            }
+        } else if (initialTab) { // Fallback to server-defined initial tab (e.g., if no hash or hash was cleaned)
             showPanel(initialTab);
             const initialActiveButton = document.querySelector(`.tab-button[data-tab="${initialTab}"]`);
             if (initialActiveButton) {
@@ -60,42 +82,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // NEW: Refactored Signup Form Submission and Password Confirmation Logic
-    if (signupForm) { // Only proceed if the signup form exists
+    // Signup Form Submission and Password Confirmation Logic
+     if (signupForm) {
         const signupPassword = document.getElementById('signup-password');
         const signupConfirmPassword = document.getElementById('signup-confirm-password');
         const passwordMatchError = document.getElementById('password-match-error');
 
-        // Initial console logs to confirm elements are found
-        console.log("login-signup.js loaded.");
-        console.log("signupForm (top level):", signupForm);
-        if (signupPassword && signupConfirmPassword && passwordMatchError) {
-            console.log("All password elements found.");
-        } else {
-            console.warn("One or more password validation elements not found. Check IDs in EJS and JS.");
-        }
-
-        // Function to check if passwords match (used by input and submit listeners)
         const checkPasswordsMatch = () => {
-            console.log("Checking passwords in real-time...");
-            console.log("Password:", signupPassword ? signupPassword.value : 'N/A');
-            console.log("Confirm Password:", signupConfirmPassword ? signupConfirmPassword.value : 'N/A');
-
-            if (signupPassword && signupConfirmPassword) { // Ensure elements exist before accessing .value
+            if (signupPassword && signupConfirmPassword) {
                 if (signupPassword.value !== signupConfirmPassword.value) {
                     passwordMatchError.style.display = 'block';
-                    signupConfirmPassword.setCustomValidity("Passwords do not match."); // HTML5 validation
-                    return false; // Passwords do NOT match
+                    signupConfirmPassword.setCustomValidity("Passwords do not match.");
+                    return false;
                 } else {
                     passwordMatchError.style.display = 'none';
-                    signupConfirmPassword.setCustomValidity(""); // Clear custom validity
-                    return true; // Passwords match
+                    signupConfirmPassword.setCustomValidity("");
+                    return true;
                 }
             }
-            return false; // Default to false if elements are missing
+            return false;
         };
 
-        // Add event listeners for real-time checking (if elements exist)
         if (signupPassword) {
             signupPassword.addEventListener('input', checkPasswordsMatch);
         }
@@ -103,20 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
             signupConfirmPassword.addEventListener('input', checkPasswordsMatch);
         }
 
-        // Single event listener for signup form submission
         signupForm.addEventListener('submit', (event) => {
-            console.log("Signup form submitted (main listener).");
-
-            // Perform the final password check
             const passwordsAreValid = checkPasswordsMatch();
-
             if (!passwordsAreValid) {
-                console.log("Preventing form submission due to mismatched passwords!");
-                event.preventDefault(); // STOP THE FORM SUBMISSION
-                signupConfirmPassword.focus(); // Focus for user convenience
+                event.preventDefault();
+                signupConfirmPassword.focus();
             } else {
-                console.log("Passwords match, attempting server submission.");
-                // If passwords match, then apply the button disabling and status message logic
                 if (signupButton && signupStatusMessage) {
                     signupButton.disabled = true;
                     signupButton.textContent = 'Signing up...';

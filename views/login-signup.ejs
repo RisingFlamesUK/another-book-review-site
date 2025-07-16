@@ -1,5 +1,23 @@
 <!-- views/login-signup.ejs -->
 <%- include("partials/header.ejs") %>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const returnToPath = '<%= typeof returnTo !== "undefined" ? returnTo : "/" %>';
+        const currentPathname = window.location.pathname;
+        const currentHash = window.location.hash;
+
+        // --- IMMEDIATE HISTORY REPLACEMENT FOR LOGIN PAGE ENTRY ---
+        // This MUST stay in EJS because it relies on 'returnToPath' from the server.
+        // It replaces the current history entry (e.g., /login-signup#login)
+        // with the clean returnToPath (e.g., /works/OL43113687W).
+        if (currentPathname === '/login-signup' && (currentHash === '#login' || currentHash === '#signup')) {
+            console.log("[DEBUG] login-signup.ejs (Initial History Replace): Current URL in address bar: " + window.location.href + ", Replacing history entry with: " + returnToPath);
+            history.replaceState({}, '', returnToPath);
+        } else {
+            console.log("[DEBUG] login-signup.ejs (Initial History Replace): Condition not met. Current URL: " + window.location.href);
+        }
+    });
+</script>
 <div class="flex justify-center">
   <div class="form-container">
     <div class="tab-container form-background" data-initial-tab="<%= activeTab %>">
@@ -12,6 +30,7 @@
         <div id="login" class="tab-panel">
           <h2>Login</h2>
           <form id="login-form" action="/login" method="POST">
+            <input type="hidden" name="returnTo" value="<%= returnTo %>">
             <div class="form-group">
               <label for="login-username">Username:</label>
               <input type="text" id="login-username" name="username" required>
@@ -33,6 +52,7 @@
         <div id="signup" class="tab-panel">
           <h2>Sign Up</h2>
           <form id="signup-form" action="/signup" method="POST">
+            <input type="hidden" name="returnTo" value="<%= returnTo %>">
             <div class="form-group">
               <label for="signup-username">Username:</label>
               <input type="text" id="signup-username" name="username" required>

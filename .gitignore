@@ -11,8 +11,8 @@ lerna-debug.log*
 .pnpm-debug.log*
 
 # Cached images
-/assets/image/author/*.*
-/assets/image/edition/*.*
+public/assets/images/author
+public/assets/images/edition
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

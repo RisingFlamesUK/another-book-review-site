@@ -1,0 +1,75 @@
+<!-- views/partials/review.ejs -->
+<%
+  // Check if reviewData exists before trying to access its properties
+  if (reviewData) {
+    //*********************************//
+    //format the parameters for display//
+    //*********************************//
+    // console.log('DEBUG review partial:', locals);
+
+    // Unify incoming data into consistent local variables
+    let reviewId = reviewData.review_id;
+    let reviewUser = reviewData.username;
+    let reviewUserImage = '';
+    
+      if (userImage === null || userImage === undefined || userImage === '') {
+        reviewUserImage = `<i id="review-user-image" class="bi bi-person-circle"></i>`
+      } else {
+        reviewUserImage = `<img id="review-user-image" src="${userImage}" alt="${reviewUser}'s profile image)">`;
+      }
+
+    let reviewTitle = reviewData.review_title;
+    let reviewReview = reviewData.review;
+    let reviewScore = reviewData.score;
+    let rawReviewDateString = reviewData.created;
+    let rawReviewModifiedString = reviewData.last_modified;
+
+    // Formatting display variables
+    const descriptiveDateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+    const rawReviewDate = new Date(rawReviewDateString);
+    let reviewDate = new Intl.DateTimeFormat(undefined, descriptiveDateOptions).format(rawReviewDate);
+    let reviewModified = null;
+    if (rawReviewDateString !== rawReviewModifiedString) {
+      reviewModified = new Intl.DateTimeFormat(undefined, descriptiveDateOptions).format(new Date(rawReviewModifiedString));
+    }
+
+    // Generate star HTML using existing helpers
+    // Ensure 'edition' object is always available when accessing edition.edition_olid/work_olid
+    let reviewScoreStarsHTML = isUserReview ? `<div class="user-rating-wrapper" data-edition-olid="${edition.edition_olid}" data-work-olid="${edition.work_olid}"> ${processUserScore(reviewScore, 5, false)}</div>`: scoreToStars(reviewScore);
+    let displayReviewScore = isUserReview ? '' : processScore(reviewScore, "all");
+%>
+
+<div class="review-card flex vertical" data-review-id="<%= reviewId %>" data-review-title="<%= reviewTitle || '' %>" data-review-text="<%= reviewReview || '' %>" data-review-score="<%= reviewScore || 0 %>" data-is-user-review="<%= isUserReview %>">
+  <div class="flex justify-between align-center">
+    <div class="review-user flex align-center gap10 <%= isUserReview ? 'review-user-me' : '' %>">
+      <%- reviewUserImage %>
+      <span><%= reviewUser %></span>
+    </div>
+    <% if (isUserReview) { %>
+    <div>(My Review)</div>
+    <button class="button edit-review-button" data-action="edit-review">Edit Review</button>
+    <% } %>
+  </div>
+
+  <div class="flex gap10 align-center">
+    <div class="review-score">
+      <%- reviewScoreStarsHTML %>
+    </div>
+    <div class="review-title">
+      <h4><i><strong><%= reviewTitle %></strong></i></h4>
+    </div>
+  </div>
+  <div class="review-date">
+    <span>Reviewed on: <%= reviewDate %></span>
+    <% if (reviewModified) { %>
+    <span>(Last modified: <%= reviewModified %>)</span>
+    <% } %>
+  </div>
+  <div class="review-text">
+    <%- reviewReview %>
+  </div>
+</div>
+
+<% } else { %>
+<p id="no-reviews-message" class="info-message">You have not reviewed this edition yet.</p>
+<% } %>

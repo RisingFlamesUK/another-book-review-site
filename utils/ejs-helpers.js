@@ -2,7 +2,7 @@
 
 export function processScore(score = null, mode) {
     let displayScore = "";
-    if (score === null) {
+    if (score === null || score === '') {
         displayScore = '<span class="star-suffix"><i>&nbsp;(Not reviewed)</i></span>';
     } else if (mode === 'all') {
         displayScore = '<span class="work-score">(' + score + ")</span>";
@@ -28,18 +28,28 @@ export function scoreToStars(score = null) {
     return stars
 }
 
-export function processUserScore(userScore = null, maxStars = 5) {
+export function processUserScore(userScore = null, maxStars = 5, includeText = true) {
     let starsHtml = '';
     let scorePrefix = '';
     let scoreSuffix = '';
-    const roundedScore = userScore !== null ? Math.round(userScore) : 0; 
+    const roundedScore = userScore !== null ? Math.round(userScore) : 0;
 
     if (userScore === null) {
+        if (includeText) {
         scorePrefix = '<p>Review Now: &nbsp;&nbsp;&nbsp;';
-        scoreSuffix = '<span class="user-score-suffix not-reviewed"><i>&nbsp;(Not reviewed)</i></span><p>';
+        } else {
+            scorePrefix = '<p>';
+        }
+        scoreSuffix = '<span class="user-score-suffix not-reviewed"><i>&nbsp;(Not reviewed)</i></span></p>';
+
     } else {
-        scorePrefix = '<p>My Score: &nbsp;&nbsp;&nbsp;';
-        scoreSuffix = '</p>';
+        if (includeText) {
+            scorePrefix = '<p>My Score: &nbsp;&nbsp;&nbsp;';
+            scoreSuffix = '</p>';
+        } else {
+            scorePrefix = '';
+            scoreSuffix = '';
+        }
     }
 
     for (let i = 1; i <= maxStars; i++) {
@@ -49,7 +59,7 @@ export function processUserScore(userScore = null, maxStars = 5) {
         starsHtml += `<i class="user-star ${starClass}" data-value="${i}" data-current-score="${userScore || 0}"></i>`;
     }
 
-    return `<div class="user-stars-container" data-original-score="${userScore || 0}">${scorePrefix}${starsHtml}${scoreSuffix}</p></div>`;
+    return `<div class="user-stars-container" data-original-score="${userScore || 0}">${scorePrefix}${starsHtml}${scoreSuffix}</div>`;
 }
 
 export function processAuthors(authors) {
@@ -79,60 +89,92 @@ export function processDescription(description, length) {
     let containsSection = '';
 
     // Define an array of regex patterns to detect various "Contains" or similar sections.
-    // The order matters: the first match found will be used.
-    // Each regex should capture the 'contains' content in its last capturing group.
+    // Each entry now includes the regex and the specific index of its content capturing group.
     const containsSectionRegexes = [
-        // 1. Original "Contains" section (with optional bolding)
-        // Matches: --- (2+ newlines) --- (1+ newline) **Contains** (2+ newlines) content
-        /(\r?\n){2,}-{5,}(\r?\n){1,}\*\*?Contains\*\*?(\r?\n){2,}([\s\S]*)/,
-
-        // 2. "Also contained in:" section
-        // Matches: --- (2+ newlines) --- (1+ newline) Also contained in: (2+ newlines) content
-        /(\r?\n){2,}-{5,}(\r?\n){1,}Also contained in:(\r?\n){2,}([\s\S]*)/,
-
-
-        // Add more regex patterns here as needed.
-        // Example: If you find "See also:" followed by similar formatting:
-        // /(\r?\n){2,}-{5,}(\r?\n){3,}See also:(\r?\n){2,}([\s\S]*)/,
+        {
+            // 1. 3 newlines, 10 dashes, 1 newline, then literal "Contains:"
+            // This is placed first to capture this precise format.
+            regex: /(\r?\n){3}-{10}(\r?\n)Contains:\s*([\s\S]*)/,
+            contentGroupIndex: 3
+        },
+        {
+            // 2. More general "Contains" pattern (2+ newlines, 4+ dashes, 1+ newline, then "Contains:" potentially bolded)
+            // This regex covers variations that include whitespace around the dashes and optional bolding,
+            // which you indicated worked for other books.
+            regex: /(\r?\n){2,}\s*-{4,}\s*(\r?\n){1,}\*\*?Contains\*\*?:?\s*([\s\S]*)/,
+            contentGroupIndex: 3
+        },
+        {
+            // 3. "Also contained in:" section
+            regex: /(\r?\n){2,}-{5,}(\r?\n){1,}Also contained in:(\r?\n){1,}([\s\S]*)/,
+            contentGroupIndex: 4
+        },
     ];
 
-    let matchedRegex = null; // To store the regex that actually matched
-    let match = null;         // To store the match result
+    let matchedPattern = null; // To store the {regex, contentGroupIndex} object that actually matched
+    let match = null; // To store the match result
 
     // Cycle through the regex patterns until a match is found
-    for (const regex of containsSectionRegexes) {
-        match = originalDescription.match(regex);
+    for (const pattern of containsSectionRegexes) {
+        match = originalDescription.match(pattern.regex);
         if (match) {
-            matchedRegex = regex; // Store the successful regex
+            matchedPattern = pattern; // Store the successful pattern object
             break; // Stop at the first successful match
         }
     }
 
-    if (match) {
+    if (match && matchedPattern) {
         // If any "Contains" section is found:
         // Everything before the match is the main description.
         mainDescription = originalDescription.substring(0, match.index);
-        // The last captured group is the content of the "Contains" section.
-        // This assumes all regexes in the array consistently use the last group for content.
-        containsSection = match[4];
+        // Use the stored contentGroupIndex to get the correct content.
+        containsSection = match[matchedPattern.contentGroupIndex];
     }
 
     // --- Process mainDescription ---
     // At this point, the mainDescription string no longer contains the "Contains" section or the horizontal line.
+
+    // Handle Markdown bold text: **text** to <strong>text</strong> in mainDescription
+    mainDescription = mainDescription.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // Handle Markdown reference link definitions and usage in mainDescription
+    const mainDescriptionReferenceLinks = {};
+    let tempMainDescription = mainDescription;
+    // Extract definitions first
+    const mainRefDefRegex = /^\s*\[(\d+)\]:\s*(.+)$/gm;
+    let mainMatch;
+    while ((mainMatch = mainRefDefRegex.exec(tempMainDescription)) !== null) {
+        const label = mainMatch[1];
+        const url = mainMatch[2].trim();
+        mainDescriptionReferenceLinks[label] = url;
+    }
+    // Remove definitions from mainDescription
+    mainDescription = mainDescription.replace(mainRefDefRegex, '');
+
+    // Handle standard markdown links [text](url) in mainDescription
+    mainDescription = mainDescription.replace(/\[(.*?)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Handle the specific `([source][1])` format in mainDescription
+    // This regex looks for `([text][number])` specifically at the end of a line
+    mainDescription = mainDescription.replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, (fullMatch, text, label) => {
+        const url = mainDescriptionReferenceLinks[label];
+        if (url) {
+            return `(<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>)`;
+        }
+        return fullMatch; // Return original match if URL not found
+    });
+
 
     // Process remaining newlines to <br> tags, limiting consecutive <br> to two in mainDescription
     mainDescription = mainDescription.replace(/\r\n/g, '<br>');
     mainDescription = mainDescription.replace(/(<br>){3,}/g, '<br><br>');
     mainDescription = mainDescription.replace(/\n{3,}/g, '<br><br>');
 
-    // Handle Markdown bold text: **text** to <strong>text</strong> in mainDescription
-    mainDescription = mainDescription.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
     // Remove any trailing <br> tags from the main description before truncation
     mainDescription = mainDescription.replace(/(<br>\s*)+$/, '');
 
     // Truncation for mainDescription (always apply this last for the description part)
-    if (mainDescription.length > length) {
+    if (length && mainDescription.length > length) { // Only truncate if length is provided and description is longer
         let safeTruncationPoint = mainDescription.slice(0, length).lastIndexOf(' ');
         if (safeTruncationPoint === -1 || safeTruncationPoint < length * 0.8) {
             safeTruncationPoint = length;
@@ -167,6 +209,15 @@ export function processDescription(description, length) {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
         }
         return match;
+    });
+
+    // Handle the specific `([source][1])` format in containsSection
+    containsSection = containsSection.replace(/\(\[([^\]]+)\]\[(\d+)\]\)/g, (fullMatch, text, label) => {
+        const url = referenceLinks[label]; // Corrected
+        if (url) {
+            return `(<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>)`;
+        }
+        return fullMatch; // Return original match if URL not found
     });
 
     // 4. Handle Markdown bold text: **text** to <strong>text</strong>

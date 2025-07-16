@@ -58,7 +58,7 @@ h3 {
 }
 
 p {
-    margin: 1rem 0;
+    margin: 0.5rem 0;
 }
 
 a.no-underline {
@@ -95,8 +95,16 @@ a.no-underline {
     padding-bottom: 10px;
 }
 
+.padding-bottom10 {
+    padding-bottom: 10px;
+}
+
 .invisible {
     display: none !important;
+}
+
+.float-left {
+    float: left;
 }
 
 /* Flexbox Utilities */
@@ -120,6 +128,10 @@ a.no-underline {
     flex-grow: 2;
 }
 
+.gap10 {
+    gap: 10px;
+}
+
 .justify-center {
     justify-content: center;
 }
@@ -136,8 +148,16 @@ a.no-underline {
     justify-content: space-between;
 }
 
+.justify-around {
+    justify-content: space-around;
+}
+
 .align-center {
     align-items: center;
+}
+
+.align-start {
+    align-items: start;
 }
 
 .align-baseline {
@@ -172,7 +192,7 @@ main {
     margin-bottom: 0;
     display: flex;
     flex-direction: column;
-    padding-top: var(--header-height);
+    margin-top: var(--header-height);
     padding-bottom: 0;
 }
 
@@ -203,6 +223,10 @@ footer {
 
 .left-margin-20 {
     margin-left: 20px;
+}
+
+.height100 {
+    height: 100%;
 }
 
 /* ------------------------------------- */
@@ -283,6 +307,7 @@ footer {
     border-color: var(--hover-contrast-color);
     background-color: var(--hover-color);
 }
+
 
 /* Profile Dropdown (Most Specific Header Component) */
 .profile-dropdown-container {
@@ -443,6 +468,7 @@ footer {
 
 /* Individual Card Styles */
 .card-container {
+    box-shadow: 5px 5px 5px #555;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -473,6 +499,10 @@ footer {
     height: var(--cover-height);
     flex-shrink: 0;
     padding: 0 10px;
+}
+
+.missing-cover-container {
+    position: relative;
 }
 
 .book-cover {
@@ -638,12 +668,68 @@ footer {
 }
 
 /* -------------------------------- */
-/*   9. Editions   */
+/*   9. Editions  / Works */
 /* -------------------------------- */
+.edition-collection-status-container {
+    position: relative;
+}
+
+.details-title {
+    font-size: medium;
+    font-weight: 400;
+}
+
+.add-books-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 100px;
+    background-color: rgb(213, 238, 146);
+}
+
+.add-books-button:hover {
+    color: var(--hover-contrast-color) !important;
+    background-color: var(--hover-color);
+}
+
+.bi-bookmark-check-fill {
+    color: var(--hover-contrast-color);
+    font-size: large;
+}
+
+.in-collection-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 100px;
+    background-color: var(--highlight-color);
+    color: white;
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: medium;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    /* box-shadow: 5px 5px 7px rgba(0, 0, 0, 0.6); */
+    /* No hover effect as it's a badge, not an interactive button */
+}
+
+.details-main-title {
+    padding-left: 4rem;
+}
+
+.right-column {
+    margin-left: 20px;
+}
+
+.work-cover-container,
 .edition-cover-container {
     padding: 0 10px 0 0;
 }
 
+.work-cover,
 .edition-cover {
     width: 14vw;
     max-height: 100%;
@@ -654,12 +740,168 @@ footer {
     background-color: rgb(70, 45, 14);
 }
 
-#edition-text {
+.work-editions-header {
+    padding-bottom: 10px;
+}
+
+.work-edition-group {
+    position: relative;
+    box-shadow: 3px 3px 3px #555;
+    border: 1px grey solid;
+    margin: 0 0 2px 0;
+    padding: 10px;
+}
+
+.work-edition-image {
+    height: 75px;
+    margin-right: 20px;
+}
+
+
+.work-edition-group:hover {
+    background-color: rgb(152, 236, 208);
+    border: 1px lightgrey solid;
+    box-shadow: 2px 2px 2px #333;
+    cursor: pointer;
+}
+
+.add-books-button:hover .add-books-icon {
+    color: var(--hover-contrast-color);
+}
+
+.missing-cover-overlay-M {
+    position: absolute;
+    z-index: 10;
+    top: 40px;
+    left: 25%;
+    width: 50%;
+    text-align: center;
+}
+
+.missing-cover-overlay-s {
+    position: absolute;
+    z-index: 10;
+    top: 5px;
+    left: 8px;
+    width: 50%;
+    text-align: center;
+
+}
+
+.missing-cover-text-s {
+    background-color: white;
+    font-size: xx-small;
+    width: fit-content;
+    padding: 1px 2px;
+    border-radius: 5px;
+
+}
+
+.edition-link-card {
+    text-decoration: none;
+    color: inherit;
+    font-style: normal;
+    display: block;
+    margin-bottom: 10px;
+
+    transition: background-color 0.2s ease;
+}
+
+.work-editions-container {
+    box-shadow: 3px 3px 3px #555 inset;
+    background-color: white;
+    min-height: 100px;
+    width: calc(100% - 40px);
+    margin: 10px 10px 0px 0px;
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.add-review-button {
+    position: relative;
+    top: -10px;
+}
+
+.edition-reviews-Header {
+    border-bottom: 1px solid black;
+}
+
+.review-card {
+    border: 1px black solid;
+    border-top-style: none;
+    padding: 20px;
+}
+
+.review-user {
+    padding: 0 10px;
+}
+
+.review-user-me {
+    border: 1px dashed black;
+    border-radius: 5px;
+}
+
+
+
+.review-title h4 {
+    margin: 0;
+}
+
+.review-score i,
+.review-score .user-stars-container p {
+    margin-top: 0;
+    font-size: small;
+}
+
+.review-date {
+    font-size: small;
+}
+
+.review-text {
+    margin-top: 10px;
+}
+
+.review-form-group {
+    margin: 20px 0 0 0 !important;
+}
+
+#review-form-buttons {
+    gap: 10px;
+}
+
+#review-user-image {
+    font-size: x-large;
+    padding: 0;
+}
+
+#review-form-score-container>label,
+#review-form-score-container {
+    margin: 0;
+}
+
+#reviewForm {
+    padding: 20px;
+}
+
+#edition-add-books-button,
+#edition-in-collection-badge {
+    position: relative !important;
+    top: -5px;
+    margin-bottom: 10px;
+}
+
+#edition-header {
+    margin: 0 20px 10px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid black;
+}
+
+#work-text #edition-text {
     width: 100%;
-    /* padding: 10px; */
     position: relative;
 }
 
+#work-details,
 #edition-details {
     margin: 0px 20px 20px 20px;
     padding: 20px;
@@ -667,7 +909,15 @@ footer {
     background-color: var(--secondary-color);
 }
 
+#work-details {
+    width: calc(100% - 40px)
+}
+
+
+#edition-reviews-container,
+#work-description,
 #edition-description {
+    box-shadow: 3px 3px 3px #555 inset;
     height: auto;
     min-height: 200px;
     position: relative;
@@ -676,6 +926,15 @@ footer {
     margin: 10px;
     background-color: white;
     border-radius: 10px;
+}
+
+#edition-reviews-container {
+    box-shadow: 0 0 0 !important;
+    min-height: 150px !important;
+}
+
+#work-description {
+    margin-top: 0 !important;
 }
 
 #edition-cover-user-info {
@@ -696,6 +955,7 @@ footer {
     margin: 5px 0;
 }
 
+#work-content,
 #edition-content {
     max-width: 1200px;
 }
@@ -825,6 +1085,32 @@ button[type="submit"]:hover {
 
 /* -------------------------------- */
 /*   11. Media Queries  */
+/* -------------------------------- */
+
+.search-form {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px !important;
+}
+
+.search-input {
+    padding: 5px 10px;
+    margin-left: 5px !important;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.search-button {
+    padding: 5px !important;
+    margin-left: 5px !important;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+
+/* -------------------------------- */
+/*   12. Media Queries  */
 /* -------------------------------- */
 @media (min-width: 992px) {
     body {

@@ -1,193 +1,178 @@
-// public/js/user-stars.js
+// This file is public/js/user-stars.js
 
-document.addEventListener('DOMContentLoaded', () => {
+const clientScoreToStars = (score) => {
+  const starScore = Math.round(score || 0);
+  let stars = '';
+  for (let i = 1; i <= 5; i++) {
+    stars += `<i class="bi ${i <= starScore ? 'bi-star-fill' : 'bi-star'}"></i>`;
+  }
+  return stars;
+};
 
-    // --- Client-side helper functions (MUST be defined here or imported) ---
-    const clientScoreToStars = (score) => {
-        if (score === null) score = 0;
-        const starScore = Math.round(score);
-        let stars = '';
-        for (let i = 1; i <= starScore; i++) {
-            stars += '<i class="bi bi-star-fill"></i>';
-        }
-        for (let i = starScore + 1; i <= 5; i++) {
-            stars += '<i class="bi bi-star"></i>';
-        }
-        return stars;
-    };
+const clientProcessScore = (score) => {
+  if (score === null || score === '') {
+    return '<span class="star-suffix"><i>&nbsp;(Not reviewed)</i></span>';
+  }
+  return `<span class="work-score">(${score})</span>`;
+};
 
-    const clientProcessScore = (score) => {
-        return score === null ? "" : '<span class="work-score">(' + score + ")</span>";
-    };
+const renderUserStarsHtml = (scoreToDisplay) => {
+  const roundedScore = Math.round(scoreToDisplay || 0);
+  let starsHtml = '';
+  for (let i = 1; i <= 5; i++) {
+    const className = `user-star bi ${i <= roundedScore ? 'bi-star-fill' : 'bi-star'}`;
+    starsHtml += `<i class="${className}" data-value="${i}"></i>`;
+  }
+  return starsHtml;
+};
 
-    const renderUserStarsHtml = (scoreToDisplay) => {
-        const roundedScore = scoreToDisplay !== null ? Math.round(scoreToDisplay) : 0;
-        let starsHtml = '';
-        for (let i = 1; i <= 5; i++) {
-            const starClass = (i <= roundedScore) ? 'bi bi-star-fill' : 'bi bi-star';
-            starsHtml += `<i class="user-star ${starClass}" data-value="${i}"></i>`;
-        }
-        return starsHtml;
-    };
+// Helper: full HTML with prefix/suffix
+const renderCompleteUserStarsHtml = (score) => {
+  const starsHtml = renderUserStarsHtml(score);
+  const prefix = score === 0 ? 'Review Now: ' : '';
+  const suffix = score === 0 ? '<span class="star-suffix">(Not reviewed)</span>' : '';
+  return `${prefix}${starsHtml}${suffix}`;
+};
 
+// Update overall work score display
+window.updateWorkScoreDisplay = (paragraphEl, totalScore, reviewCount) => {
+  const avg = reviewCount > 0 ? (totalScore / reviewCount).toFixed(1) : '0.0';
+  const starsHtml = clientScoreToStars(avg);
+  const scoreHtml = clientProcessScore(avg);
+  const reviewText = reviewCount === 1 ? 'review' : 'reviews';
+  const countText = reviewCount != null ? `(${reviewCount} ${reviewText})` : '';
+  paragraphEl.innerHTML = `Overall: &nbsp; ${starsHtml} ${scoreHtml}<span class="star-suffix"><i>${countText}</i></span>`;
+};
 
-    // --- User Rating Interactivity ---
-    // Select all userStarsContainers. This will work for both my-books and edition pages.
-    // On my-books, it will find multiple. On edition, it will find one (if logged in).
-    const userStarsContainers = document.querySelectorAll('.user-stars-container');
+// Initialize user editable stars UI
+window.initializeUserStars = (container) => {
+  const originalScore = parseFloat(container.dataset.originalScore) || 0;
 
-    userStarsContainers.forEach(container => {
-        // originalScore is for the specific container being iterated
-        let originalScore = parseFloat(container.dataset.originalScore);
+  const updatePreview = (score) => {
+    container.innerHTML = renderCompleteUserStarsHtml(score);
+  };
 
-        const updateUserStarsAppearance = (scoreToDisplay) => {
-            const userScoreParagraph = container.querySelector('p');
-            if (userScoreParagraph) {
-                const starsHtml = renderUserStarsHtml(scoreToDisplay);
-                let prefixText;
-                let suffixHtml = '';
+  updatePreview(originalScore);
 
-                if (scoreToDisplay === 0) {
-                    prefixText = 'Review Now: &nbsp;&nbsp;&nbsp;';
-                    suffixHtml = '<span class="star-suffix">&nbsp;(Not reviewed)</span>';
-                } else {
-                    prefixText = 'My Score: &nbsp;&nbsp;&nbsp;';
-                    suffixHtml = '';
-                }
-                userScoreParagraph.innerHTML = `${prefixText}${starsHtml}${suffixHtml}`;
-            }
-        };
+  // Remove old handlers if re-initializing
+  ['mouseover', 'mouseout', 'click'].forEach(evt => {
+    container.removeEventListener(evt, container[`__${evt}Handler__`]);
+  });
 
-        // Initial render for the user stars
-        updateUserStarsAppearance(originalScore);
-
-        // --- Event Delegation for Hover Effects ---
-        container.addEventListener('mouseover', function(event) {
-            const hoveredStar = event.target.closest('.user-star');
-            if (hoveredStar) {
-                const hoverValue = parseInt(hoveredStar.dataset.value);
-                const currentStars = Array.from(container.querySelectorAll('.user-star'));
-
-                currentStars.forEach(star => {
-                    const starValue = parseInt(star.dataset.value);
-                    star.classList.remove('bi-star-fill', 'bi-star', 'hover-fill');
-                    star.classList.add('bi');
-                    if (starValue <= hoverValue) {
-                        star.classList.add('bi-star-fill', 'hover-fill');
-                    } else {
-                        star.classList.add('bi-star');
-                    }
-                    star.style.border = '1px dashed rgba(255, 231, 12, 0.5)';
-                    star.style.boxSizing = 'border-box';
-                });
-            }
-        });
-
-        container.addEventListener('mouseout', function(event) {
-            const currentStars = Array.from(container.querySelectorAll('.user-star'));
-            currentStars.forEach(star => {
-                const starValue = parseInt(star.dataset.value);
-                star.classList.remove('bi-star-fill', 'bi-star', 'hover-fill');
-                star.classList.add('bi');
-                if (starValue <= Math.round(originalScore)) {
-                    star.classList.add('bi-star-fill');
-                } else {
-                    star.classList.add('bi-star');
-                }
-                star.style.border = 'none';
-            });
-        });
-
-        // --- Click to set score (uses event delegation) ---
-        container.addEventListener('click', async function(event) {
-            const clickedStar = event.target.closest('.user-star');
-            if (clickedStar) {
-                event.preventDefault();
-                event.stopPropagation();
-
-                const newScore = parseInt(clickedStar.dataset.value);
-                // For a single edition page, the parent will be the .user-rating-wrapper
-                // For a book_card, it's the .card-container
-                const parentContext = this.closest('.card-container') || this.closest('.user-rating-wrapper');
-
-                if (!parentContext) {
-                    console.error('Could not find parent context for edition/work OLIDs.');
-                    alert('An error occurred. Please refresh the page and try again.');
-                    return;
-                }
-
-                const editionOlid = parentContext.dataset.editionOlid;
-                const workOlid = parentContext.dataset.workOlid;
-
-                try {
-                    const response = await fetch('/set-user-score', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            edition_olid: editionOlid,
-                            work_olid: workOlid,
-                            score: newScore
-                        }),
-                    });
-
-                    if (response.ok) {
-                        const result = await response.json();
-                        if (result.success) {
-                            // Update user's score on the card
-                            originalScore = result.newUserScore;
-                            container.dataset.originalScore = result.newUserScore;
-                            updateUserStarsAppearance(originalScore);
-
-                            // Find the correct work score section based on context
-                            let workScoreSection;
-                            if (parentContext.classList.contains('card-container')) {
-                                // For my-books page
-                                workScoreSection = parentContext.querySelector('.work-score-section');
-                            } else if (parentContext.classList.contains('user-rating-wrapper')) {
-                                // For edition page
-                                workScoreSection = document.getElementById('edition-work-score');
-                            }
-
-                            if (workScoreSection) {
-                                const workScoreParagraph = workScoreSection.querySelector('p');
-                                if (workScoreParagraph) {
-                                    let newWorkStarsHtml = clientScoreToStars(result.newWorkScore);
-                                    let newWorkScoreNumberHtml = clientProcessScore(result.newWorkScore);
-                                     let reviewText = 'review';
-                                    if (result.newWorkReviewCount !== 1) {
-                                        reviewText += 's';
-                                    }
-                                    let newWorkReviewCountText = result.newWorkReviewCount !== null ? `(${result.newWorkReviewCount} ${reviewText})` : '';
-
-                                    // Check if it's a card container (my-books) or the main edition page
-                                    if (parentContext.classList.contains('card-container')) {
-                                        workScoreParagraph.innerHTML = `Average Rating: ${newWorkStarsHtml} ${newWorkScoreNumberHtml}<span class="star-suffix"><i> ${newWorkReviewCountText}</i></span>`;
-                                    } else { // Assuming it's the edition page
-                                        workScoreParagraph.innerHTML = `Overall: &nbsp; ${newWorkStarsHtml} ${newWorkScoreNumberHtml}<span class="star-suffix"><i>${newWorkReviewCountText}</i></span>`;
-                                    }
-                                }
-                            }
-                        } else {
-                            alert('Failed to update your rating: ' + (result.message || 'Unknown error'));
-                        }
-                    } else {
-                        // --- IMPORTANT CHANGE HERE ---
-                        if (response.status === 401) {
-                            alert('You are not logged in. Please log in to update your rating.');
-                            window.location.href = '/login'; // Redirect to your login page
-                        } else {
-                            const errorText = await response.text();
-                            console.error('Server response:', response.status, errorText);
-                            alert('Server error while updating rating. Please try again. Status: ' + response.status);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error setting user score:', error);
-                    alert('An error occurred while submitting your rating. Please try again.');
-                }
-            }
-        });
+  const handleMouseOver = (e) => {
+    const star = e.target.closest('.user-star');
+    if (!star) return;
+    const val = parseInt(star.dataset.value, 10);
+    Array.from(container.querySelectorAll('.user-star')).forEach(el => {
+      const v = parseInt(el.dataset.value, 10);
+      el.classList.remove('bi-star-fill', 'bi-star');
+      el.classList.add(v <= val ? 'bi-star-fill' : 'bi-star');
+      el.style.border = '1px dashed rgba(255,231,12,0.5)';
     });
+  };
+
+  const handleMouseOut = (e) => {
+    const updatedScore = parseFloat(container.dataset.originalScore) || 0;
+    Array.from(container.querySelectorAll('.user-star')).forEach(el => {
+      const v = parseInt(el.dataset.value, 10);
+      el.classList.remove('bi-star-fill', 'bi-star');
+      el.classList.add(v <= updatedScore ? 'bi-star-fill' : 'bi-star');
+      el.style.border = 'none';
+    });
+  };
+
+  const handleClick = async (e) => {
+    const clickedStar = e.target.closest('.user-star');
+    if (!clickedStar) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    const newScore = parseInt(clickedStar.dataset.value, 10);
+    const wrapper = clickedStar.closest('.user-rating-wrapper');
+    if (!wrapper) return alert('Could not find context.');
+
+    const {
+      editionOlid,
+      workOlid
+    } = wrapper.dataset;
+    console.log('Clicked star for user score update', {
+      editionOlid,
+      workOlid,
+      newScore
+    });
+
+    try {
+      const resp = await fetch('/set-user-score', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          edition_olid: editionOlid,
+          work_olid: workOlid,
+          score: newScore
+        })
+      });
+
+      const body = await resp.json();
+
+      if (!resp.ok || !body.success) {
+        if (resp.status === 401) {
+          alert('Please log in to rate.');
+          window.location = '/login';
+        } else {
+          throw new Error(body.message || 'Failed to update rating');
+        }
+        return;
+      }
+
+      // 1. Update main work score on edition.ejs
+      const fullEditionSection = document.getElementById('edition-work-score');
+      if (fullEditionSection) {
+        const p = fullEditionSection.querySelector('p');
+        if (p) window.updateWorkScoreDisplay(p, body.newWorkScore, body.newWorkReviewCount);
+      }
+
+      // 2. Update user star blocks (all wrappers)
+      document.querySelectorAll(`.user-rating-wrapper[data-edition-olid="${editionOlid}"]`).forEach(userWrapper => {
+        const starsContainer = userWrapper.querySelector('.user-stars-container');
+        if (starsContainer) {
+          starsContainer.dataset.originalScore = body.newUserScore;
+          starsContainer.innerHTML = renderCompleteUserStarsHtml(body.newUserScore);
+          window.initializeUserStars(starsContainer); // reattach listeners
+        }
+
+        const cardContainer = userWrapper.closest('.card-container');
+        if (cardContainer) {
+          const workScoreP = cardContainer.querySelector('.work-score-section p');
+          if (workScoreP) {
+            window.updateWorkScoreDisplay(workScoreP, body.newWorkScore, body.newWorkReviewCount);
+          }
+        }
+      });
+
+      // 3. Refresh user review section (if on edition.ejs)
+      window.refreshUserReviewSection?.();
+
+    } catch (err) {
+      console.error(err);
+      alert('Error submitting rating. Refresh and try again.');
+    }
+  };
+
+  container.addEventListener('mouseover', handleMouseOver);
+  container.addEventListener('mouseout', handleMouseOut);
+  container.addEventListener('click', handleClick);
+
+  container.__mouseoverHandler__ = handleMouseOver;
+  container.__mouseoutHandler__ = handleMouseOut;
+  container.__clickHandler__ = handleClick;
+};
+
+// Initialize all on DOM load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.user-stars-container').forEach(el => {
+    window.initializeUserStars(el);
+  });
 });

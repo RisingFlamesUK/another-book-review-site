@@ -172,38 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         cardContainer.addEventListener('click', function (event) {
             if (!event.defaultPrevented) {
-                // Retrieve all data from the data-attributes
-                const dataToPass = {
-                    edition_olid: this.dataset.editionOlid,
-                    work_olid: this.dataset.workOlid,
-                    title: this.dataset.title,
-                    publish_date: this.dataset.publishDate,
-                    // Decode strings back to original format
-                    description: decodeURIComponent(this.dataset.description),
-                    cover_url: this.dataset.coverUrl,
-                    status_id: this.dataset.statusId,
-                    userReview: JSON.parse(decodeURIComponent(this.dataset.userreview || '{}')),
-                    workScore: JSON.parse(decodeURIComponent(this.dataset.workscore || '{}')),
-                    authors: decodeURIComponent(this.dataset.authors),
-                    languages: this.dataset.languages
-                };
-
-                // Remove any existing hidden inputs from previous clicks to prevent duplication
-                form.querySelectorAll('input[type="hidden"]').forEach(input => input.remove());
-
-                // Create hidden input fields for each piece of data
-                for (const key in dataToPass) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = key; // Use the actual key as the name
-                    // For objects/arrays, ensure they are stringified again for submission
-                    input.value = (typeof dataToPass[key] === 'object' && dataToPass[key] !== null) ?
-                        JSON.stringify(dataToPass[key]) :
-                        dataToPass[key];
-                    form.appendChild(input);
-                }
-
-                form.submit();
+                // *** IMPORTANT CHANGE HERE: Navigate directly to the GET route ***
+                window.location.href = `/edition/${this.dataset.editionOlid}`;
             }
         });
 
@@ -211,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardContainer.addEventListener('keypress', function (event) {
             if (event.key === 'Enter') {
                 event.preventDefault(); // Prevent default action (e.g., scrolling)
-                this.click(); // Trigger the click event, which submits the form
+                this.click(); // This will now trigger the modified click event above
             }
         });
     });

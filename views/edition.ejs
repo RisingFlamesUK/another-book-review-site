@@ -1,7 +1,12 @@
+<!-- views/edition.ejs -->
 <%
     //*********************************//
     //format the parameters for display//
     //*********************************//
+    // console.log('DEBUG: locals received by edition.ejs', locals)
+    // console.log('DEBUG: editionReviews object received by edition.ejs', locals.edition.editionReviews)
+    // console.log('DEBUG: authors object received by edition.ejs', locals.edition.authors)
+    // console.log('DEBUG: Edition', edition)
     // Title
     let displayTitle = toTitleCase(edition.title) || "Unknown Title";
 
@@ -13,18 +18,26 @@
     let rawAuthors = edition.authors || [];
     let displayAuthors = processAuthors(rawAuthors);
 
-
+    // This user's review
+    let myReview = undefined;
+    if (locals.edition.userReviewID && Array.isArray(locals.edition.editionReviews)) {
+      myReview = locals.edition.editionReviews.find(
+        review => review.review_id === locals.edition.userReviewID
+      );
+    }
     // Score & stars (user)
-    // Get the user's score from the userReview object, or null if no review exists
-    let userScore = locals.edition.userReview ? locals.edition.userReview.userscore : null;
-
+    // Get the user's score from the editionReview for this user if userReviewID exists
+    let userScore = null;
+    if(!myReview) {userScore = null} else {
+      userScore = myReview ? myReview.score : null;
+    }
     // Score & stars (work)
     let rawWorkScore = locals.edition.workScore || null;
     let workScore = null;
     let workReviewCount = null;
-    if (rawWorkScore && rawWorkScore.workscore !== undefined) {
-        workScore = rawWorkScore.workscore;
-        workReviewCount = rawWorkScore.reviewcount;
+    if (rawWorkScore && rawWorkScore.averageScore !== undefined) {
+      workScore = rawWorkScore.averageScore;
+      workReviewCount = rawWorkScore.reviewCount;
     }
     let displayWorkScore = processScore(workScore,"all");
     let displayWorkStars = scoreToStars(workScore);
@@ -48,52 +61,162 @@
     else {
         displayLanguages = edition.languages;
     }
-%>
+
+    // Publisher(s)
+    let displayPublisher = '<i>Not Found</i>';
+    if(locals.edition.publishers) {
+      displayPublisher = edition.publishers + " " + edition.publish_date;
+    } else if (edition.publish_date) {
+      displayPublisher = '<i>Publisher Not Found.</i> Published: ' + edition.publish_date;
+    }   
+    
+    // ISBN
+    let displayIsbn = 'Not Found';
+    if(locals.edition.isbn) {
+      displayIsbn = edition.isbn;
+    }
+
+    %>
 <%- include("partials/header.ejs") %>
 <div id="edition-content-container" class="flex justify-center">
-    <div id="edition-content" class="flex vertical content-background width-100">
-        <div id="edition-title" class="flex vertical align-center width-100">
-            <h2><%= displayTitle %></h2>
-            <p id="edition-authors"> <%= displayAuthors %></p>
-        </div>
-
-        <div id="edition-details" class="flex">
-
-            <div id="edition-cover-user-info" class="flex vertical justify-center align-center">
-                <div class="edition-cover-container flex justify-center align-center">
-                    <% if (locals.edition.cover_url) { %>
-                    <img src="<%= edition.cover_url %>" alt="<%= displayTitle %> Book Cover Image" class="edition-cover">
-                    <% }; %>
-                </div>
-
-                <% if (locals.user) { %>
-                <div id="edition-user-score-section">
-                    <div class="user-rating-wrapper"
-                         data-edition-olid="<%= edition.edition_olid %>"
-                         data-work-olid="<%= edition.work_olid %>">
-                        <%- processUserScore(userScore) %>
-                    </div>
-                </div>
-
-                <div id="user-status-dropdown">
-                    </div>
-                <% }; %>
-            </div>
-
-            <div id="edition-text" class="flex vertical align-center justify-center">
-                <div id="edition-description">
-                    <h3>About</h3><br>
-                    <%- displayDescription %>
-                </div>
-
-                <div class="flex justify-right width-100">
-                    <div id="edition-work-score">
-                        <p>Overall: &nbsp; <%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><%= displayWorkReviewCountText %></span></p>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <div id="edition-content" class="flex vertical content-background width-100">
+    <div id="edition-title" class="flex vertical align-center width-100">
+      <h2><%= displayTitle %></h2>
     </div>
+
+    <div class="flex width-100 align-center justify-between padding-bottom10">
+      <div class="flex-1">
+        <div class="button left-margin-20">
+          <div class="page-navigation-button">
+            <a href="#" id="backButton">
+              <i class="bi bi-chevron-double-left"></i>
+              <i class="button-text">Back</i>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="flex-1 flex justify-center">
+        <p id="work-authors"> <%= displayAuthors %></p>
+      </div>
+      <div class="flex-1">
+      </div>
+    </div>
+
+    <div id="edition-details" class="flex">
+
+      <div id="edition-cover-user-info" class="flex vertical justify-center align-center">
+        <div class="edition-cover-container flex justify-center align-center">
+          <% if (locals.edition.cover_url) { %>
+          <img src="<%= edition.cover_url %>" alt="<%= displayTitle %> Book Cover Image" class="edition-cover">
+          <% } else { %>
+          <div class="missing-cover-container">
+            <img src="/assets/images/book placeholder.webp" alt="<%= displayTitle %> Book Cover Image" class="edition-cover no-cover">
+
+            <div class="missing-cover-overlay-M flex vertical align-center">
+              <p class="missing-cover-title"><%= displayTitle %></p>
+              <p class="missing-cover-text"><i>(Cover unavailable)</i></p>
+            </div>
+          </div>
+          <% } %>
+        </div>
+
+        <% if (locals.user && locals.edition.isInCollection) { %>
+        <div id="edition-user-score-section">
+          <div class="user-rating-wrapper flex align-center" data-edition-olid="<%= edition.edition_olid %>" data-work-olid="<%= edition.work_olid %>">
+              <p>My Score: &nbsp;</p><%- processUserScore(userScore) %>
+          </div>
+        </div>
+
+        <div id="user-status-dropdown">
+        </div>
+        <% }; %>
+      </div>
+
+      <div id="edition-text" class="flex vertical align-center flex-remainder">
+        <div class="flex width-100 justify-between">
+          <div></div>
+          <h3 id="edition-header">Edition Info</h3>
+          <div class="edition-collection-status-container flex align-start justify-end">
+            <% if (user && locals.edition.isInCollection) { %>
+            <div id="edition-in-collection-badge" class="in-collection-badge flex align-center justify-center" data-edition-olid="<%= edition.edition_olid %>">
+              In My Collection <i class="bi bi-bookmark-check-fill add-books-icon"></i>
+            </div>
+            <% } else if (user && !locals.edition.isInCollection){ %>
+            <div id="edition-add-books-button" class="add-books-button button page-navigation-button add-to-collection-btn" data-edition-olid="<%= edition.edition_olid %>">
+              Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>
+            </div>
+            <% } %>
+          </div>
+        </div>
+
+
+
+        <div class="flex width-100 justify-between">
+          <div class="padding-x10">Publisher(s): <%- displayPublisher %></div>
+          <div class="padding-x10">ISBN: <%= displayIsbn %></div>
+        </div>
+        <div id="edition-description">
+          <h3 class="work-editions-title">About</h3><br>
+          <%- displayDescription %>
+        </div>
+
+        <div class="flex justify-right width-100">
+          <div id="edition-work-score">
+            <p>Overall: &nbsp; <%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><%= displayWorkReviewCountText %></span></p>
+          </div>
+        </div>
+
+        <div id="edition-reviews-container">
+          <div class="flex vertical height100">
+            <div id="review-action-container" class="edition-reviews-Header flex justify-between align-center">
+              <h3>Reviews</h3>
+              <% if (locals.user) { %>
+              <% if (!locals.edition.userReviewID) { %>
+              <% if (locals.edition.isInCollection) { %>
+              <span id="add-book-span" class="invisible">Add this book to your collection to review it</span>
+              <button class="button add-review-button" data-action="add-review">Add Review</button>
+              <% } else { %>
+              <span id="add-book-span">Add this book to your collection to review it</span>
+              <button class="button add-review-button invisible" data-action="add-review">Add Review</button>
+              <% } %>
+              <% } %>
+              <% } %>
+            </div>
+
+            <section id="user-review-section" class="flex-remainder flex vertical">
+
+              <div id="user-review-form" class="invisible"><%- include("partials/review-form.ejs", { 
+                    reviewData: myReview,
+                    username: locals.user?.username,
+                    userImage: locals.user?.image
+                  }) %>
+              </div>
+
+              <% if (edition.editionReviews.length) { %>
+              <% edition.editionReviews.forEach(review => { %>
+              <div id="review-container-<%= review.review_id %>">
+                <%- include("partials/review.ejs", {
+                    reviewData: review,
+                    isUserReview: (review.review_id === locals.edition.userReviewID),
+                    username: locals.user?.username,
+                    userImage: locals.user?.image
+                  }) %>
+                
+              </div>
+              <% }) %>
+                <% } else { %>
+                <div class="flex vertical justify-center align-center flex-remainder">
+                  <div class="no-results-message">No reviews yet</div>
+                </div>
+
+                <% } %>
+            </section>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <%- include("partials/footer.ejs") %>
@@ -101,3 +224,13 @@
 <% if (locals.user) { %>
 <script src="/js/user-stars.js"></script>
 <% } %>
+<script>
+  // Pass relevant data to the client-side script via data attributes on the body
+  document.body.dataset.editionOlid = "<%= edition.edition_olid %>";
+  document.body.dataset.workOlid = "<%= edition.work_olid %>";
+  document.body.dataset.username = "<%= locals.user ? locals.user.username : '' %>";
+  document.body.dataset.userImage = "<%= locals.user ? (locals.user.image || '') : '' %>"; // Handle null/undefined image
+  document.body.dataset.userReviewID = "<%= locals.edition.userReviewID || '' %>";
+  document.body.dataset.isInCollection = "<%= locals.edition.isInCollection || '' %>";
+</script>
+<script src="/js/edition-script.js"></script>

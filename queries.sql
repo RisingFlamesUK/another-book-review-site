@@ -1,19 +1,35 @@
 DROP TABLE IF EXISTS cached_subject_data;
+
 DROP TABLE IF EXISTS cached_trending_data;
+
 DROP TABLE IF EXISTS book_review;
+
 DROP TABLE IF EXISTS book_notes;
+
 DROP TABLE IF EXISTS users_books;
+
 DROP TABLE IF EXISTS statuses;
+
 DROP TABLE IF EXISTS editions_languages;
+
 DROP TABLE IF EXISTS authors_books;
+
 DROP TABLE IF EXISTS authors;
+
 DROP TABLE IF EXISTS book_editions;
+
 DROP TABLE IF EXISTS works_subjects;
+
 DROP TABLE IF EXISTS works_scores;
+
 DROP TABLE IF EXISTS book_works;
+
 DROP TABLE IF EXISTS languages;
+
 DROP TABLE IF EXISTS subjects;
+
 DROP TABLE IF EXISTS session;
+
 DROP TABLE IF EXISTS users;
 
 -- Enable UUID extension
@@ -45,7 +61,6 @@ CREATE TABLE subjects (
     name TEXT NOT NULL,
     type TEXT,
     UNIQUE (name, type)
-
 );
 
 CREATE TABLE languages (
@@ -80,7 +95,9 @@ CREATE TABLE book_editions (
     work_olid TEXT REFERENCES book_works (work_olid) ON DELETE CASCADE NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
-    publish_date TEXT NOT NULL,
+    publishers TEXT,
+    publish_date TEXT,
+    isbn TEXT,
     cover_url TEXT,
     last_refreshed TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -107,9 +124,8 @@ CREATE TABLE editions_languages (
     edition_olid TEXT REFERENCES book_editions (edition_olid) ON DELETE CASCADE NOT NULL,
     language_id INTEGER REFERENCES languages (id) ON DELETE CASCADE NOT NULL,
     last_refreshed TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    UNIQUE (edition_olid, language_id) 
+    UNIQUE (edition_olid, language_id)
 );
-
 
 -- Create Tables - user book management --
 CREATE TABLE statuses (
@@ -137,25 +153,30 @@ CREATE TABLE book_notes (
 
 CREATE TABLE book_review (
     id BIGSERIAL PRIMARY KEY,
-    user_book_id INTEGER REFERENCES users_books (id) ON DELETE
-    SET
-        NULL,
-        review TEXT,
-        score INTEGER,
-        created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        last_modified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    user_book_id INTEGER REFERENCES users_books (id) ON DELETE SET NULL,
+    review_title TEXT,
+    review TEXT,
+    score INTEGER,
+    created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_modified TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+
+CREATE UNIQUE INDEX unique_user_book_review_not_null
+ON book_review (user_book_id)
+WHERE user_book_id IS NOT NULL;
 
 CREATE TABLE cached_trending_data (
     id SERIAL PRIMARY KEY,
-    period TEXT UNIQUE NOT NULL, -- e.g., 'hourly', 'daily', 'weekly', 'monthly'
+    period TEXT UNIQUE NOT NULL,
+    -- e.g., 'hourly', 'daily', 'weekly', 'monthly'
     data JSONB NOT NULL,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE cached_subject_data (
     id SERIAL PRIMARY KEY,
-    subject_name TEXT NOT NULL, -- e.g., 'Fantasy', 'History', 'Science Fiction'
+    subject_name TEXT NOT NULL,
+    -- e.g., 'Fantasy', 'History', 'Science Fiction'
     language TEXT,
     data JSONB NOT NULL,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,

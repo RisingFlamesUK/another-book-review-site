@@ -15,9 +15,11 @@ import {
     cachedTrending,
     cachedBrowseSubjects,
     getUserBooks,
-    setUserScore,
-    getWorkScore,
+    putUserScore,
+    getWorksScore,
     getUserReviews,
+    putUserReview,
+    patchUserReview,
     logCurrentCache,
 } from './utils/db-handler.js';
 import generateSecret from "./utils/encryption-handler.js";
@@ -28,6 +30,12 @@ import * as utils from './utils/utils.js';
 import * as ol from './utils/ol-handler.js';
 import * as ejsHelpers from './utils/ejs-helpers.js';
 import * as be from './utils/backend-data-handler.js'
+import {
+    validateBody
+} from './middleware/validateBody.js';
+import {
+    validateQuery
+} from './middleware/validateQuery.js';
 
 dotenv.config();
 
@@ -66,7 +74,7 @@ app.use(
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 250, // Limit each IP to 100 requests per windowMs
     message: 'Too many requests from this IP, please try again after 15 minutes',
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -97,7 +105,7 @@ try {
             const subjectCache = cachedBrowseSubjects[subjectName];
             // Ensure subjectCache.data exists and is an array before trying to get its length
             const dataCount = subjectCache && Array.isArray(subjectCache.data) ? subjectCache.data.length : 0;
-            console.log(`      ${subjectName}: `,dataCount);
+            console.log(`      ${subjectName}: `, dataCount);
         }
     }
 
@@ -127,59 +135,9 @@ try {
 // } 
 
 // Response: 
-// REDIRECT to books || Fail send response
+// REDIRECT to referrer page || books 
 
-app.post("/signup", async (req, res) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-    try {
-        const {
-            username,
-            password,
-            email
-        } = req.body;
-
-        // Perform specific validation for signup
-        const validationErrors = await utils.validateUser(username, password, email, true);
-
-        if (validationErrors) {
-            const validationsErrorMessages = await validationErrors.map((error) => {
-                return error.message;
-            });
-            const firstValidationError = validationErrors[0].message || 'Validation error occurred.';
-            console.error(`${ip}: Failed to create user ${username} due to validation errors:\n`, validationsErrorMessages);
-            req.session.signupError = `Signup failed: ${firstValidationError}`;
-            req.session.signupMode = 'signup';
-            return req.session.save(() => res.redirect('/login-signup#signup'));
-        }
-
-        const user = await auth.createUser(username, email, password);
-        console.log(`${ip}: New user created: ${username}`);
-
-        if (user) {
-            try {
-                await auth.loginUser(req, res); // Corrected call: Passing only req and res
-                return res.redirect('/books'); // Redirect on successful signup and login
-            } catch (loginError) {
-                console.error(`${ip}: Login failed immediately after signup for user: ${username}`, loginError);
-                req.session.loginError = 'Signup successful, but automatic login failed. Please log in.';
-                return req.session.save(() => res.redirect('/login-signup#login'));
-            }
-        } else {
-            console.error(`${ip}: Failed to retrieve user data after signup: ${username}`);
-            req.session.signupError = 'Signup successful, but user data retrieval failed.';
-            req.session.signupMode = 'signup';
-            return req.session.save(() => res.redirect('/login-signup#signup'));
-        }
-
-    } catch (error) {
-        console.error(`${ip}: Failed to create user ${username} | `, error);
-        req.session.signupError = error.message || `Failed to create user ${username}`;
-        req.session.signupMode = 'signup';
-        return req.session.save(() => res.redirect('/login-signup#signup'));
-    }
-});
-
+app.post("/signup", validateBody(['username', 'email', 'password']), auth.handleSignup);
 
 //-------------------------------------
 // 2.	User Login: POST /login route 
@@ -191,64 +149,8 @@ app.post("/signup", async (req, res) => {
 // } 
 
 // Response: 
-// REDIRECT to books || Fail send response
-app.post('/login', async (req, res) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-    try {
-        const {
-            username,
-            password
-        } = req.body;
-
-        // Perform specific validation using utils.validateUser
-        const validationErrors = await utils.validateUser(username, password);
-        if (validationErrors) {
-            const validationsErrorMessages = await validationErrors.map((error) => {
-                return error.message;
-            });
-            const firstValidationError = validationErrors[0].message || 'Validation error occurred.';
-            console.error(`${ip}: Failed to login ${username} due to validation errors:\n`, validationsErrorMessages);
-            req.session.loginError = `Login failed: ${firstValidationError}`;
-            return req.session.save(() => res.redirect('/login-signup#login'));
-        }
-
-        // Check if the user is already logged in
-        if (req.session.isLoggedIn) {
-            console.log(`${ip}: User ${req.session.user.username} is already logged in. Regenerating session.`);
-            req.session.regenerate(async (err) => {
-                if (err) {
-                    console.error('Error regenerating session:', err);
-                    return res.status(500).send('Failed to create new session');
-                }
-
-                // Proceed with the new login attempt after successful regeneration
-                try {
-                    await auth.loginUser(req, res);
-                    return res.redirect('/books'); // Redirect on successful login
-                } catch (loginError) {
-                    console.error("Error during new login after regenerate:", loginError);
-                    req.session.loginError = loginError.message || 'Login failed.';
-                    return req.session.save(() => res.redirect('/login-signup#login'));
-                }
-            });
-        } else {
-            // If not logged in, proceed with login
-            try {
-                await auth.loginUser(req, res);
-                return res.redirect('/books'); // Redirect on successful login
-            } catch (loginError) {
-                req.session.loginError = loginError.message || 'Login failed.';
-                return req.session.save(() => res.redirect('/login-signup#login'));
-            }
-        }
-
-    } catch (error) {
-        console.error(`${ip}: Login error in route handler:`, error);
-        req.session.loginError = error.message || 'Login failed due to an internal error.';
-        return req.session.save(() => res.redirect('/login-signup#login'));
-    }
-});
+// REDIRECT to referrer page || books 
+app.post("/login", validateBody(['username', 'password']), auth.handleLogin);
 
 //-------------------------------------
 // 3.	User Logout: GET /logout route 
@@ -291,7 +193,7 @@ app.get('/', (req, res) => {
 });
 
 //-------------------------------------
-// 2.	Books page - user dashboard 
+// 2.	My Books page - user dashboard 
 //-------------------------------------
 app.get('/books', async (req, res) => {
     if (req.session.isLoggedIn) {
@@ -322,82 +224,86 @@ app.get('/books', async (req, res) => {
 // 3.	Login/signup page
 //-------------------------------------
 app.get('/login-signup', (req, res) => {
-
+    // console.log('DEBUG: followed the app.get /login-signup route')
     if (req.session.isLoggedIn) {
-        return res.redirect('/books');
+        // If already logged in, redirect to the stored returnTo path or default
+        const returnTo = req.session.returnTo || '/books';
+        delete req.session.returnTo; // Clean up the session after using it
+        return res.redirect(returnTo);
     }
-    const loginError = req.session.loginError;
-    delete req.session.loginError;
-    const signupError = req.session.signupError;
-    delete req.session.signupError;
-    const isLoggedIn = req.session.isLoggedIn || false;
-    const initialTab = req.session.signupMode || 'login';
+
+    const returnTo = req.query.returnTo || utils.getReturnToUrl(req) || '/';
+    req.session.returnTo = returnTo;
 
     res.render('login-signup.ejs', {
-        activeTab: initialTab,
-        isLoggedIn: isLoggedIn,
-        loginError: loginError,
-        signupError: signupError,
+        activeTab: req.session.signupMode || 'login',
+        isLoggedIn: req.session.isLoggedIn || false,
+        loginError: req.session.loginError,
+        signupError: req.session.signupError,
+        returnTo: returnTo // Pass returnTo to the EJS template
     });
-    delete req.session.signupMode;
-
+    delete req.session.signupMode; // Clear signup mode from session
+    delete req.session.loginError; // Clear error from session after displaying
+    delete req.session.signupError; // Clear error from session after displaying
 });
 
 app.get('/login', (req, res) => {
+    // console.log('DEBUG: followed the app.get /login route')
     if (req.session.isLoggedIn) {
-        res.redirect('/books');
+        const returnTo = req.session.returnTo || '/books';
+        delete req.session.returnTo;
+        return res.redirect(returnTo);
     } else {
         req.session.signupMode = 'login';
+        req.session.returnTo = utils.getReturnToUrl(req);
         req.session.save(() => {
-            res.redirect('/login-signup');
+            res.redirect('/login-signup#login');
         });
-    };
+    }
 });
 
 app.get('/signup', (req, res) => {
+    // console.log('DEBUG: followed the app.get /signup route')
     if (req.session.isLoggedIn) {
-        res.redirect('/books');
+        const returnTo = req.session.returnTo || '/books';
+        delete req.session.returnTo;
+        return res.redirect(returnTo);
     } else {
         req.session.signupMode = 'signup';
+        req.session.returnTo = utils.getReturnToUrl(req);
         req.session.save(() => {
-            res.redirect('/login-signup');
+            res.redirect('/login-signup#signup');
         });
-    };
+    }
 });
+
 //-------------------------------------
 // 4.	View Edition
 //-------------------------------------
-app.post('/edition', async (req, res) => {
-    const cardData = req.body;
+// From Work page or direct navigation
+app.get('/edition/:edition_olid', async (req, res) => {
+    let cardData = null;
     let user = undefined;
+    let user_id;
+    const edition_olid = req.params.edition_olid;
 
-    try {
-        if (cardData.description) {
-            cardData.description = JSON.parse(cardData.description);
-        }
-        if (cardData.authors) {
-            cardData.authors = JSON.parse(cardData.authors);
-        }
-        if (req.session.isLoggedIn) {
-            user = req.session.user;
-            let result = await getUserReviews(user.id, cardData?.edition_olid);
-            cardData.userReview = result[0];
-        } else {
-            cardData.userReview = null;
-        }
-
-        cardData.workScore = await getWorkScore(cardData.work_olid);
-
-        if (cardData.workScore?.work_olid.length === 0) {
-            cardData.workScore = null;
-        }
-
-    } catch (e) {
-        console.error("Error parsing JSON data from submitted card:", e);
-        return res.status(400).send("Invalid data format received.");
+    if (req.session.isLoggedIn) {
+        user = {
+            username: req.session.user.username,
+            image: req.session.user.image
+        };
+        user_id = req.session.user.id
     }
 
-    // console.log("Received card data on /edition POST:", cardData);
+    try {
+        cardData = await be.getEditionCardData(edition_olid, 'all', user_id);
+
+    } catch (error) {
+        console.error(`Error retrieving data for edition: ${edition_olid}:`, error);
+        return res.status(400).send(`Error retrieving data for edition: ${edition_olid}`);
+    }
+
+    // console.log("DEBUG Received card data on /edition GET:", cardData);
 
     res.render('edition.ejs', {
         user: user,
@@ -412,11 +318,96 @@ app.post('/edition', async (req, res) => {
     });
 });
 
+//render a review partial
+app.get('/render-partial/user-review', validateQuery(['edition_olid', 'work_olid']), async (req, res) => {
+    const user = req.session?.user;
+    const edition_olid = req.query.edition_olid;
+    const work_olid = req.query.work_olid;
+
+    if (!user || !user.id) {
+        return res.status(401).send('Unauthorized');
+    }
+
+    try {
+        const books = await getUserBooks(user.id, edition_olid);
+        if (!books || books.length === 0) {
+            return res.status(404).send('Review not found');
+        }
+
+        const book = books[0];
+        const reviewData = book.userReview;
+
+        if (!reviewData) {
+            return res.status(404).send('Review not found');
+        }
+
+        // console.log('DEBUG: app.get /rendrer-partial/user-review route, reviewData ', reviewData)
+
+        res.render('partials/review.ejs', {
+            'reviewData': {
+                edition_olid: reviewData.edition_olid,
+                username: user.username,
+                user_image: user.image,
+                review_id: reviewData.review_id,
+                review_title: reviewData.userreviewtitle,
+                review: reviewData.userreview,
+                score: reviewData.userscore,
+                created: reviewData.userreviewcreated,
+                last_modified: reviewData.userreviewmodified,
+            },
+            isUserReview: true,
+            username: user.username,
+            userImage: user.image,
+            edition: {
+                edition_olid,
+                work_olid
+            },
+            processUserScore: ejsHelpers.processUserScore,
+            processScore: ejsHelpers.processScore,
+            scoreToStars: ejsHelpers.scoreToStars,
+            processAuthors: ejsHelpers.processAuthors,
+            processDescription: ejsHelpers.processDescription,
+            toTitleCase: ejsHelpers.toTitleCase,
+        });
+
+    } catch (err) {
+        console.error('Error rendering user review partial:', err);
+        res.status(500).send('Internal server error');
+    }
+});
+
+
+//render the review form partial
+app.post('/render-partial/review-form', validateBody(['initialTitle', 'initialReview', 'initialScore'], {
+    optional: ['reviewId']
+}), async (req, res) => {
+    const {
+        reviewId,
+        initialTitle,
+        initialReview,
+        initialScore
+    } = req.body;
+
+    try {
+        return res.render('partials/review-form.ejs', {
+            reviewId,
+            initialTitle,
+            initialReview,
+            initialScore
+        });
+    } catch (err) {
+        console.error('Render partial error:', err);
+        return res.status(500).json({
+            error: err.message
+        });
+    }
+});
+
 //-------------------------------------
-// 5.	Browse Books 
-//      (incl add to collection)
+// 5.  Browse Books
 //-------------------------------------
 app.get('/browse', async (req, res) => {
+    // console.log('DEBUG: followed the app.get /browse route')
     let user = undefined;
     if (req.session.isLoggedIn) {
         user = {
@@ -427,33 +418,205 @@ app.get('/browse', async (req, res) => {
     }
 
     let cards = {};
-    if (cachedTrending && cachedTrending.data && cachedTrending.data.length > 0) {
-        cards.trending = cachedTrending.data;
-    } else {
-        cards.trending = []
+    cards.trending = cachedTrending && cachedTrending.data && cachedTrending.data.length > 0 ? cachedTrending.data : [];
+    cards.browseSubjects = cachedBrowseSubjects || {}; // Ensure it's an object, even if empty
+
+    const allWorkOlids = new Set(); // Use a Set to store unique work_olids
+
+    // Collect work_olids from trending data
+    cards.trending.forEach(item => {
+        if (item.work_olid) {
+            allWorkOlids.add(item.work_olid);
+        }
+    });
+
+    // Collect work_olids from browse subjects data
+    for (const subject in cards.browseSubjects) {
+        if (Object.prototype.hasOwnProperty.call(cards.browseSubjects, subject)) {
+            const subjectDataWrapper = cards.browseSubjects[subject]; // This is the { data: [], lastUpdate: ... } object
+
+            // Check if subjectDataWrapper exists and has a 'data' property that is an array
+            if (subjectDataWrapper && Array.isArray(subjectDataWrapper.data)) {
+                subjectDataWrapper.data.forEach(item => {
+                    if (item && item.work_olid) {
+                        allWorkOlids.add(item.work_olid);
+                    }
+                });
+            } else {
+                console.warn(`Warning: cards.browseSubjects['${subject}'] does not contain a valid 'data' array. Skipping.`);
+            }
+        }
     }
-    cards.browseSubjects = cachedBrowseSubjects;
+
+    // Convert Set to Array for getWorksScore
+    const uniqueWorkOlidsArray = Array.from(allWorkOlids);
+
+    let workScoresMap = new Map();
+    if (uniqueWorkOlidsArray.length > 0) {
+        try {
+            const fetchedWorkScores = await getWorksScore(uniqueWorkOlidsArray);
+            // Map the fetched scores for easy lookup by work_olid
+            fetchedWorkScores.forEach(score => {
+                // Store just the averageScore
+                workScoresMap.set(score.work_olid, score.averageScore);
+            });
+        } catch (error) {
+            console.error("Error fetching work scores for browse page:", error);
+            // Log it and proceed, letting workScore remain undefined/null where not found
+        }
+    }
+
+    // Attach work scores to trending data
+    cards.trending.forEach(item => {
+        if (item.work_olid) {
+            item.averageScore = workScoresMap.get(item.work_olid) || null; // Add averageScore, or null if not found
+        } else {
+            item.averageScore = null; // Ensure it's null if work_olid is missing
+        }
+    });
+
+    // Attach work scores to browse subjects data
+    for (const subject in cards.browseSubjects) {
+        if (Object.prototype.hasOwnProperty.call(cards.browseSubjects, subject)) {
+            const subjectDataWrapper = cards.browseSubjects[subject]; // This is the { data: [], lastUpdate: ... } object
+
+            // Check if subjectDataWrapper exists and has a 'data' property that is an array
+            if (subjectDataWrapper && Array.isArray(subjectDataWrapper.data)) {
+                subjectDataWrapper.data.forEach(item => { // Now correctly accessing the 'data' array
+                    if (item && item.work_olid) {
+                        item.averageScore = workScoresMap.get(item.work_olid) || null; // Add averageScore, or null if not found
+                    } else if (item) { // If item exists but work_olid is missing
+                        item.averageScore = null; // Ensure it's null
+                    }
+                });
+            }
+        }
+    }
 
     res.render('browse-books.ejs', {
         user: user,
         cards: cards,
+        scoreToStars: ejsHelpers.scoreToStars,
+    });
+});
 
+//-------------------------------------
+// 6.	View Works 
+//      (incl add to collection)
+//-------------------------------------
+app.get('/works/prepare/:work_olid', (req, res) => {
+
+    const work_olid = req.params.work_olid;
+    // console.log('DEBUG: followed the app.get /works/prepare/:work_olid route for:', work_olid)
+    const initial_cover_url = req.query.cover_url ? decodeURIComponent(req.query.cover_url) : null;
+
+    let returnToUrl = req.query.returnTo || req.session.returnTo || utils.getReturnToUrl(req);
+    // console.log('DEBUG: /works/prepare returnTo:', returnToUrl)
+
+    if (initial_cover_url) {
+        // Store the cover_url in the user's session
+        req.session.initialCoverUrls = req.session.initialCoverUrls || {};
+        req.session.initialCoverUrls[work_olid] = initial_cover_url;
+        setTimeout(() => delete req.session.initialCoverUrls[work_olid], 60000);
+
+    }
+
+    // Redirect to the clean URL
+    res.redirect(`/works/${work_olid}`);
+});
+
+app.get('/works/:work_olid', async (req, res) => {
+    const work_olid = req.params.work_olid;
+    // console.log('DEBUG: followed the app.get /works/prepare/:work_olid route for:', work_olid)
+    // let returnToUrl = req.query.returnTo || req.session.returnTo || utils.getReturnToUrl(req);
+    // console.log('DEBUG: /works returnTo:', returnToUrl)
+
+    let user = undefined;
+    if (req.session.isLoggedIn) {
+        user = {
+            user_id: req.session.user.id,
+            username: req.session.user.username,
+            image: req.session.user.image
+        };
+    }
+
+    // console.log('DEBUG: work_olid in route just before calling getWorkCardData:', work_olid);
+
+    let card = {};
+    card = await be.getWorkCardData(work_olid, user?.user_id);
+
+    // Get the initial cover URL from the session, if it exists for this work_olid
+    const sessionCoverUrl = (req.session.initialCoverUrls && req.session.initialCoverUrls[work_olid]) ?
+        req.session.initialCoverUrls[work_olid] :
+        null;
+
+    // IMPORTANT: Clear the session data immediately after retrieving it
+    if (req.session.initialCoverUrls) {
+        delete req.session.initialCoverUrls[work_olid];
+    }
+
+    card.sessionCoverUrl = sessionCoverUrl;
+
+    // console.log (card);
+
+    res.render('work.ejs', {
+        user: user,
+        card: card,
+        processUserScore: ejsHelpers.processUserScore,
+        processScore: ejsHelpers.processScore,
+        scoreToStars: ejsHelpers.scoreToStars,
+        processAuthors: ejsHelpers.processAuthors,
+        processDescription: ejsHelpers.processDescription,
+        toTitleCase: ejsHelpers.toTitleCase,
     })
 
 });
 
 //-------------------------------------
+// 7.	Search 
+//-------------------------------------
+app.get('/search', async (req, res) => {
+    const query = req.query.q?.trim();
+    if (!query) {
+        return res.render('search-results.ejs', {
+            results: [],
+            query: '',
+            message: 'Please enter a search term.'
+        });
+    }
+    try {
+        const results = await ol.getOlData('search', query);
+
+        res.render('search-results.ejs', {
+            results,
+            query,
+            message: results.length ? null : 'No results found.'
+        });
+    } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).render('search-results.ejs', {
+            results: [],
+            query,
+            message: 'An error occurred while searching.'
+        });
+    }
+});
+
+
+//-------------------------------------
 //     **** Data handling ****
 //-------------------------------------
 // TESTS fo OL API interactions
-app.get('/search', async (req, res) => {
+app.get('/OLsearch', validateQuery(['type', 'criteria', 'page', 'limit', 'language']), async (req, res) => {
     const criteria = req.query.criteria;
     const type = req.query.type;
     const page = req.query?.page || 1;
     const language = req.query?.language || undefined;
+    const limit = req.query?.limit || undefined;
+    const workSearchFields = req.query?.workSearchFields || undefined;
 
     try {
-        const response = await ol.getOlData(type, criteria, page, language);
+        const response = await ol.getOlData(type, criteria, page, language, limit, workSearchFields);
         // If getOlData returns null for no results, send 404 or empty response
         if (response === null) {
             return res.status(404).json({
@@ -471,9 +634,15 @@ app.get('/search', async (req, res) => {
 });
 
 //-------------------------------------
-// 1. POST a user selected edition 
+// 1. POST a user selected edition
 //-------------------------------------
-app.post('/add-edition', async (req, res) => {
+app.post('/add-edition', validateBody(['edition_olid']), async (req, res) => {
+    // 2. Extract edition_olid from req.body
+    const {
+        edition_olid
+    } = req.body;
+
+    // 1. Authentication and Authorization Check
     if (!req.session.isLoggedIn || !req.session.user?.id) {
         console.error(`Not Authorised to Add Books: User not logged in or user ID missing`);
         return res.status(401).json({
@@ -482,52 +651,39 @@ app.post('/add-edition', async (req, res) => {
     }
 
     const user_id = req.session.user.id;
-    const edition_olid = req.query.edition_olid;
-    let authors = req.query.authors;
-
-    if (!edition_olid) {
-        return res.status(400).json({
-            error: 'Edition OLID is required.'
-        });
-    }
+    // console.log(req.body);
 
     try {
-        // Parse the authors string into a JavaScript array
-        if (authors) {
-            try {
-                authors = JSON.parse(authors);
-                if (!Array.isArray(authors)) {
-                    console.error("Error: authors query parameter was not a valid JSON array.");
-                    return res.status(400).json({
-                        error: 'Invalid authors format: not an array.'
-                    });
-                }
-            } catch (error) {
-                console.error("Error parsing authors query parameter:", error.message);
-                return res.status(400).json({
-                    error: 'Invalid authors format: invalid JSON.'
-                });
-            }
-        } else {
-            authors = []; // If no authors provided, default to an empty array
-        }
 
-        const response = await be.selectedEdition(user_id, edition_olid, authors, true);
+
+        // 2. Call the backend function to add the edition
+        // The `true` argument means force a refresh/download if it already exists.
+        const response = await be.selectedEdition(user_id, edition_olid, true);
+
+        // 3. Respond with success message
+        console.log(`Successfully processed edition ${edition_olid} for user ${user_id}. Message: ${response}`);
         return res.status(200).json({
             message: response
         });
     } catch (error) {
-        console.error(`Error in /edition route for user ${user_id}, edition ${edition_olid}:`, error.message);
-        // Use error.statusCode from custom errors or default to 500
-        res.status(error.statusCode || 500).json({
+        // 4. Error Handling
+        // validateOlid function throws errors that are caught here.
+        console.error(`Error in /add-edition route for user ${user_id}, edition ${edition_olid}:`, error.message);
+
+        // Check if the error is from validateOlid (an instance of Error)
+        // or a custom error with a statusCode property from be.selectedEdition.
+        const statusCode = error.statusCode || (error instanceof Error ? 400 : 500); // 400 for validation errors
+
+        res.status(statusCode).json({
             error: error.message || 'Failed to process selected edition.'
         });
     }
 });
+
 //-------------------------------------
 // 2. POST a user score 
 //-------------------------------------
-app.post('/set-user-score', async (req, res) => {
+app.post('/set-user-score', validateBody(['edition_olid', 'score']), async (req, res) => {
     // Ensure user is logged in
     if (!req.session.user || !req.session.user.id) {
         return res.status(401).json({
@@ -538,30 +694,24 @@ app.post('/set-user-score', async (req, res) => {
 
     const {
         edition_olid,
-        work_olid,
         score
     } = req.body;
     const user_id = req.session.user.id;
 
-    // Basic validation
-    if (!edition_olid || !work_olid || score === undefined || score < 1 || score > 5) {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid rating data provided.'
-        });
-    }
 
     try {
-        const result = await setUserScore(user_id, edition_olid, work_olid, score);
+        const result = await patchUserReview(user_id, edition_olid, {
+            score
+        });
 
-        if (result.newUserScore === score) {
+        if (result.review.score === score) {
 
             res.json({
                 success: true,
                 message: 'Rating updated successfully.',
-                newUserScore: result.newUserScore,
-                newWorkScore: result.newWorkScore ? result.newWorkScore : null,
-                newWorkReviewCount: result.newWorkReviewCount ? result.newWorkReviewCount : null
+                newUserScore: result.review.score,
+                newWorkScore: result.workScore,
+                newWorkReviewCount: result.reviewCount
             });
         } else {
             res.status(500).json({
@@ -569,6 +719,46 @@ app.post('/set-user-score', async (req, res) => {
                 message: 'Failed to update rating in database.'
             });
         }
+    } catch (error) {
+        console.error('Error in /set-user-score route:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An internal server error occurred.'
+        });
+    }
+});
+
+//-------------------------------------
+// 3. POST a user review 
+//-------------------------------------
+app.post('/set-user-review', validateBody(['edition_olid', 'review', 'review_title', 'score']), async (req, res) => {
+    // Ensure user is logged in
+    if (!req.session.user || !req.session.user.id) {
+        return res.status(401).json({
+            success: false,
+            message: 'You must be logged in to edit/post a review.'
+        });
+    }
+
+    const {
+        edition_olid,
+        review,
+        review_title,
+        score
+    } = req.body;
+    const user_id = req.session.user.id;
+
+    try {
+        const result = await putUserReview(user_id, edition_olid, review_title, review, score);
+
+        return res.json({
+            success: true,
+            message: 'Review saved.',
+            userReviewID: result.review.review_id,
+            workScore: result.workScore,
+            reviewCount: result.reviewCount
+        });
+
     } catch (error) {
         console.error('Error in /set-user-score route:', error);
         res.status(500).json({

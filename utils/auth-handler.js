@@ -2,6 +2,60 @@
 
 import * as encryption from './encryption-handler.js';
 import * as db from './db-handler.js'
+import * as utils from './utils.js';
+
+// Controller for signup
+export async function handleSignup(req, res) {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const redirectPath = req.body.returnTo || '/books';
+    const { username, email, password } = req.body;
+
+    // 🔍 Deep validation (not just middleware)
+    const validationErrors = await utils.validateUser(username, password, email, true);
+
+    if (validationErrors) {
+        const firstError = validationErrors[0]?.message || 'Validation error';
+        req.session.signupError = `Signup failed: ${firstError}`;
+        req.session.signupMode = 'signup';
+        return req.session.save(() => res.redirect('/login-signup#signup'));
+    }
+
+    try {
+        const user = await createUser(username, email, password);
+
+        if (!user) throw new Error('User creation failed');
+
+        await loginUser(req, res);
+        delete req.session.returnTo;
+        return req.session.save(() => res.redirect(303, redirectPath));
+    } catch (err) {
+        req.session.signupError = err.message || 'Signup failed';
+        req.session.signupMode = 'signup';
+        return req.session.save(() => res.redirect('/login-signup#signup'));
+    }
+}
+
+export async function handleLogin(req, res) {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const redirectPath = req.body.returnTo || '/books';
+    const { username, password } = req.body;
+
+    const validationErrors = await utils.validateUser(username, password);
+    if (validationErrors) {
+        const firstError = validationErrors[0]?.message || 'Validation error';
+        req.session.loginError = `Login failed: ${firstError}`;
+        return req.session.save(() => res.redirect('/login-signup#login'));
+    }
+
+    try {
+        await loginUser(req, res);
+        delete req.session.returnTo;
+        return req.session.save(() => res.redirect(303, redirectPath));
+    } catch (err) {
+        req.session.loginError = err.message || 'Login failed.';
+        return req.session.save(() => res.redirect('/login-signup#login'));
+    }
+}
 
 // Create user
 export async function createUser(username, email, password) {

@@ -63,8 +63,10 @@
             </ul>
           </div>
           <% } else { %>
-          <a href="/login-signup" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a>
-          <p class="m-0"><a href="/login-signup" class="m-0">Login / Sign-up</a></p>
+          <!-- <a href="/login" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a> -->
+          <!-- <p class="m-0"><a href="/login" class="m-0">Login / Sign-up</a></p> -->
+          <a href="#" onclick="replaceHistoryAndLogin(event)" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a>
+          <a href="#" onclick="replaceHistoryAndLogin(event)">Login / Sign-up</a>
           <% } %>
         </div>
       </div>
@@ -73,3 +75,10 @@
   </header>
   <main class="container px-0 width-100">
     <div class="content-container">
+      <script>
+        function replaceHistoryAndLogin(event) {
+          event.preventDefault(); // Prevent default link behavior
+          // Replace the current page in history with the login page
+          window.location.replace('/login');
+        }
+      </script>
