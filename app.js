@@ -6,6 +6,7 @@ import {
     database,
     PGStore
 } from './utils/database.js';
+import * as file from "./utils/file-handler.js"
 import {
     initDbAndCache,
     cachedStatuses,
@@ -576,29 +577,47 @@ app.get('/works/:work_olid', async (req, res) => {
 // 7.	Search 
 //-------------------------------------
 app.get('/search', async (req, res) => {
-    const query = req.query.q?.trim();
-    if (!query) {
-        return res.render('search-results.ejs', {
-            results: [],
-            query: '',
-            message: 'Please enter a search term.'
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.redirect('/browse');
+
+    try {
+        const {
+            cards,
+            totalCount
+        } = await be.getSearchResultCard(query);
+        res.render('search-results.ejs', {
+            query,
+            cards,
+            totalCount,
+            scoreToStars: ejsHelpers.scoreToStars
+        });
+    } catch (err) {
+        console.error('Search route failed:', err);
+        res.status(500).render('error', {
+            message: "Failed to fetch search results."
         });
     }
-    try {
-        const results = await ol.getOlData('search', query);
+});
 
-        res.render('search-results.ejs', {
-            results,
-            query,
-            message: results.length ? null : 'No results found.'
+app.post('/search/covers', async (req, res) => {
+    const {
+        urls
+    } = req.body;
+    if (!Array.isArray(urls) || !urls.length) return res.json({});
+
+    try {
+        const results = await file.getOlImage('edition', urls, 'M');
+        const arr = Array.isArray(results) ? results : [results];
+        const map = {};
+        arr.forEach(r => {
+            if (r.status === 'downloaded' || r.status === 'cached') {
+                map[r.remoteImageUrl] = r.localPath;
+            }
         });
-    } catch (error) {
-        console.error('Search error:', error);
-        res.status(500).render('search-results.ejs', {
-            results: [],
-            query,
-            message: 'An error occurred while searching.'
-        });
+        res.json(map);
+    } catch (err) {
+        console.error('Error fetching covers:', err);
+        res.status(500).json({});
     }
 });
 
@@ -613,10 +632,11 @@ app.get('/OLsearch', validateQuery(['type', 'criteria', 'page', 'limit', 'langua
     const page = req.query?.page || 1;
     const language = req.query?.language || undefined;
     const limit = req.query?.limit || undefined;
+    const offset = req.query?.offset || undefined;
     const workSearchFields = req.query?.workSearchFields || undefined;
 
     try {
-        const response = await ol.getOlData(type, criteria, page, language, limit, workSearchFields);
+        const response = await ol.getOlData(type, criteria, page, language, limit, offset, workSearchFields);
         // If getOlData returns null for no results, send 404 or empty response
         if (response === null) {
             return res.status(404).json({

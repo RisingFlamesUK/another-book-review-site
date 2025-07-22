@@ -641,3 +641,39 @@ export function sendHistoryReplacingRedirect(res, targetPath) {
         </html>
     `);
 }
+
+
+const NAME_OVERRIDES = {
+  "van gogh": "van Gogh",
+  "de la cruz": "de la Cruz",
+  "al khwarizmi": "al-Khwarizmi",
+  "da vinci": "da Vinci"
+};
+
+export function toTitleCase(str) {
+
+//handles:
+// Dot-separated initials (e.g. "j.r.r.")
+// Ensures capital letters after punctuation
+
+  if (!str || typeof str !== 'string') return str;
+
+  const lower = str.toLowerCase();
+  if (NAME_OVERRIDES[lower]) return NAME_OVERRIDES[lower];
+
+  return str
+    .split(' ')
+    .map(word => {
+      // Handle initials like j.r.r.
+      if (/^[a-z](\.[a-z])+\.?$/i.test(word)) {
+        return word.toUpperCase();
+      }
+
+      // Capitalize after apostrophes or prefixes (e.g., O')
+      return word
+        .toLowerCase()
+        .replace(/^(o')([a-z])/i, (_, prefix, char) => prefix + char.toUpperCase()) // O'Connor
+        .replace(/^\w/, char => char.toUpperCase()); // General case
+    })
+    .join(' ');
+}

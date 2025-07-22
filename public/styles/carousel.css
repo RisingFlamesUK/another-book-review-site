@@ -77,8 +77,8 @@
     position: absolute;
     z-index: 10;
     top: 15px;
-    left: 15px;
-    width: 140px;
+    left: 10%;
+    width: 80%;
     text-align: center;
 }
 

@@ -14,7 +14,7 @@ const base_url = 'https://openlibrary.org'
  * @param {number} [limit=null] - The maximum number of results to return.
  * @returns {Promise<any>} - A promise that resolves to the API response data. Returns null for specific "not found" cases, or throws an error on API/data issues.
  */
-export async function getOlData(type, criteria, page = 1, language = null, limit = null, workSearchFields = 'author_key,author_name,cover_edition_key,cover_i,edition_key,first_publish_year,first_publish_date,first_publication_date,key,language,title,subject,publishers') {
+export async function getOlData(type, criteria, page = 1, language = null, limit = null, offset = null, workSearchFields = 'author_key,author_name,cover_edition_key,cover_i,edition_count, edition_key,first_publish_year,first_publish_date,first_publication_date,key,language,title,subject,publishers') {
     // Initial input validation for required parameters
     if (!type) {
         const error = new Error('Type parameter is required for Open Library API call.');
@@ -33,46 +33,44 @@ export async function getOlData(type, criteria, page = 1, language = null, limit
         const requestTimeout = 5000;
 
         switch (type) {
-            case "search": { // Use block scope for variables
+            case "search": {
                 const encodedTitle = encodeURIComponent(criteria);
-                let searchLanguage;
-                if (language?.length === 0) {
-                    searchLanguage = null;
-                } else {
-                    searchLanguage = utils.languageLookup('key', language, 'key');
-                    if (!searchLanguage) {
-                        searchLanguage = utils.languageLookup('language', language, 'key');
-                    }
-                    if (!searchLanguage) {
-
-                    } else {
-                        searchLanguage = "+language:" + searchLanguage;
+                let searchLanguage = null;
+                if (language?.length > 0) {
+                    searchLanguage = utils.languageLookup('key', language, 'key') || utils.languageLookup('language', language, 'key');
+                    if (searchLanguage) {
+                        searchLanguage = `+language:${searchLanguage}`;
                     }
                 }
 
-                let limit = '';
-                if (limit) {
-                    limit = '&limit=' + limit;
-                } else {
-                    limit = '&mode=everything';
-                }
-                const searchUrl = `${base_url}/search.json?q=${encodedTitle}${searchLanguage || ''}&page=${page}${limit}`;
+                const queryParams = [`q=${encodedTitle}`];
+                if (searchLanguage) queryParams.push(searchLanguage);
+                if (limit) queryParams.push(`limit=${limit}`);
+                if (page && !offset) queryParams.push(`page=${page}`);
+                if (offset) queryParams.push(`offset=${offset}`);
+
+                const searchUrl = `${base_url}/search.json?${queryParams.join('&')}`;
                 console.log(`   getOlData: Fetching search results for: ${searchUrl}`);
-                const searchResponse = await axios.get(searchUrl, {
-                    timeout: requestTimeout
-                });
 
+                const searchResponse = await axios.get(searchUrl, {
+                    timeout: requestTimeout *2
+                });
                 if (searchResponse.status !== 200) {
-                    throw new Error(`Search API returned non-200 status: ${searchResponse.status} ${searchResponse.statusText}`);
+                    throw new Error(`Search API returned non-200 status: ${searchResponse.status}`);
                 }
-                if (!searchResponse.data || !Array.isArray(searchResponse.data.docs)) {
-                    console.warn('   - getOlData: Received unexpected data format for search results. Expected data.docs array.');
-                    responseData = {
-                        docs: []
-                    };
-                } else {
-                    responseData = searchResponse.data;
+
+                responseData = searchResponse.data || {
+                    docs: []
+                };
+
+                if (responseData.docs?.length > 0) {
+                    responseData.docs.forEach(doc => {
+                        if (Array.isArray(doc.author_name)) {
+                            doc.author_name = doc.author_name.map(name => utils.toTitleCase(name));
+                        }
+                    });
                 }
+
                 break;
             }
             case "work-search": { // Use block scope for variables
@@ -115,6 +113,15 @@ export async function getOlData(type, criteria, page = 1, language = null, limit
                 } else {
                     responseData = searchResponse.data;
                 }
+
+                if (responseData.docs?.length > 0) {
+                    responseData.docs.forEach(doc => {
+                        if (Array.isArray(doc.author_name)) {
+                            doc.author_name = doc.author_name.map(name => utils.toTitleCase(name));
+                        }
+                    });
+                }
+
                 break;
             }
             case "edition": {
@@ -199,7 +206,7 @@ export async function getOlData(type, criteria, page = 1, language = null, limit
                     }
                 }
 
-                const name = data.name;
+                const name = utils.toTitleCase(data.name);
                 const bio = data.bio?.value ?? data.bio ?? null;
                 const birth_date = data.birth_date;
                 const death_date = data.death_date;
@@ -261,6 +268,7 @@ export async function getOlData(type, criteria, page = 1, language = null, limit
                     subjects: subjects,
                     description: description,
                     authors: authorsOlids,
+                    author_name: utils.toTitleCase(data.author),
                     cover_edition: cover_edition
                 };
                 break;

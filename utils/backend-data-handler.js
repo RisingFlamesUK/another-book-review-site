@@ -1423,6 +1423,30 @@ export async function getWorkCardData(work_olid, user_id = null) {
     }
 }
 
+export async function getSearchResultCard(query) {
+  const { works, totalCount } = await getAllSearchResults(query);
+  const cards = await Promise.all(works.map(async work => {
+    const work_olid = work.key.replace('/works/', '');
+    const coverEdition = work.cover_edition_key;
+    const first_publish_date = work.first_publish_date ?? work.first_publication_date ?? work.first_publish_year;
+    const score = work_olid ? await db.getWorksScore(work_olid) : null;
+
+    return {
+      work_olid,
+      title: work.title,
+      author_names: work.author_name || [],
+      edition_count: work.edition_count || 0,
+      first_publish_date,
+      language: work.language || [],
+      cover_edition_key: coverEdition,
+      workscore: score
+    };
+  }));
+
+  return { cards, totalCount };
+}
+
+
 export async function getAllWorkEditions(workOlid) {
     let allEditions = [];
     let page = 1;
@@ -1619,4 +1643,71 @@ export async function getAllWorkEditions(workOlid) {
         editions: filteredEditions,
         totalCount: totalEditionsCount
     };
+}
+
+/**
+ * Fetches Open Library search results up to a configurable max pages, filtering out works with no editions.
+ *
+ * @param {string} query - The search query string.
+ * @param {object} [options]
+ * @param {number} [options.limitPerPage=100] - Number of docs per page.
+ * @param {number} [options.maxPages=25] - Maximum number of pages to fetch.
+ * @param {number} [options.concurrency=10] - Max concurrent fetches.
+ * @returns {Promise<{works: object[], totalCount: number}>}
+ */
+export async function getAllSearchResults(query, {
+  limitPerPage = 100,
+  maxPages = 10,
+  concurrency = 10
+} = {}) {
+  let filteredWorks = [];
+
+  try {
+    // 1. Fetch first page
+    const firstResp = await ol.getOlData('search', query, 1, null, limitPerPage);
+    if (!firstResp?.docs?.length) {
+      console.warn('No valid search data received for first page.');
+      return { works: [], totalCount: 0 };
+    }
+
+    filteredWorks = firstResp.docs.filter(d => (d.edition_count || 0) > 0);
+    const totalCount = firstResp.num_found || 0;
+    const totalPages = Math.ceil(totalCount / limitPerPage);
+    const pagesToFetch = Math.min(totalPages, maxPages);
+
+    // 2. Prepare remaining pages (if any)
+    const remaining = [];
+    for (let p = 2; p <= pagesToFetch; p++) remaining.push(p);
+
+    // 3. Fetch in batches with concurrency control
+    async function fetchPage(p) {
+      try {
+        const r = await ol.getOlData('search', query, p, null, limitPerPage);
+        return Array.isArray(r.docs) ? r.docs.filter(d => (d.edition_count || 0) > 0) : [];
+      } catch (e) {
+        console.warn(`Page ${p} fetch failed: ${e.message}`);
+        return [];
+      }
+    }
+
+    async function fetchInBatches(pageNums, batchSize) {
+      const out = [];
+      for (let i = 0; i < pageNums.length; i += batchSize) {
+        const batch = pageNums.slice(i, i + batchSize);
+        const res = await Promise.all(batch.map(fetchPage));
+        res.forEach(arr => out.push(...arr));
+      }
+      return out;
+    }
+
+    // 4. Run the fetches
+    const rest = await fetchInBatches(remaining, concurrency);
+    filteredWorks = filteredWorks.concat(rest);
+
+    return { works: filteredWorks, totalCount };
+
+  } catch (err) {
+    console.error(`getAllSearchResults failed: ${err.message}`);
+    return { works: [], totalCount: 0 };
+  }
 }

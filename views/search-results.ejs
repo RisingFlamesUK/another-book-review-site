@@ -1,17 +1,45 @@
-<%- include("partials/header.ejs") %>
+<!-- views/search-results.ejs -->
+<%- include("./partials/header.ejs") %>
 
-<div class="search-results content-background padding-20">
+<div class="content-background padding-x20 flex vertical align-center justify-center">
   <h2>Search Results for "<%= query %>"</h2>
-    <% console.log(locals.results.docs) %>
-  <% if (message) { %>
-    <p><%= message %></p>
-  <% } else { %>
-    <div class="card-grid">
-      <% results.forEach(result => { %>
-        <%- include('partials/browse-card.ejs', { card: result }) %>
-      <% }) %>
+  <div id="pagination-options" class="flex justify-right width-100">
+      <!-- Items per page dropdown -->
+    <div class="flex align-center">
+      <p>Show:</p>
+      <select id="itemsPerPageDropdown">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <span>&nbsp; entires per page</span>
     </div>
+  </div>
+
+</div>
+
+<div class="content-background followon-container">
+  <% if (cards.length === 0) { %>
+  <p>No results found.</p>
+  <% } else { %>
+  <div id="search-results-grid-container">
+    <div id="search-results-grid" class=""></div>
+  </div>
+
+  <!-- Pagination Controls -->
+  <div id="pagination-controls" class="pagination flex justify-center">
+  <ul id="pagination-list"></ul>
+</div>
+
+
+  <!-- Embed all cards as JSON for JS to paginate -->
+  <script type="application/json" id="search-cards-data">
+    <%- JSON.stringify(cards) %>
+  </script>
   <% } %>
 </div>
 
-<%- include("partials/footer.ejs") %>
+<script src="/js/search-results.js"></script>
+<%- include("./partials/footer.ejs") %>

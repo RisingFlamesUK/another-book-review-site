@@ -1,0 +1,54 @@
+  <!-- views/partials/search-card.ejs -->
+
+  <a class="search-card-link" href="/works/prepare/<%= locals.work_olid %>?cover_url=<%= encodeURIComponent(locals.cover_url || '') %>">
+    <div id="search-card-<%= work_olid %>" class="search-card work-card flex vertical align-center">
+      <div class="search-card-cover flex justify-center">
+        <div class="book-title-hover-box flex vertical justify-center align-center">
+          <div class="book-title-hover-text"><%= locals.title %></div>
+        </div>
+        <% if (!!cover_url) { %>
+        <div class="search-card-img flex vertical justify-start align-center">
+          <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image">
+        </div>
+        <% } else { %>
+        <div class="missing-cover-container search-card-img flex  vertical justify-start align-center">
+          <img src="/assets/images/book placeholder.webp" alt="<%= title %> Book Cover Image">
+
+          <div class="missing-cover-overlay flex vertical align-center">
+
+            <p class="missing-cover-title"><%= locals.title %></p>
+            <p class="missing-cover-text"><i>(Cover unavailable)</i></p>
+
+          </div>
+        </div>
+
+        <% } %>
+        <div class="search-work-score">
+          <% if (locals?.workscore?.averageScore) {  %>
+          <%- scoreToStars(locals?.workscore?.averageScore) %>
+          <% } %>
+        </div>
+
+        <div class="book-title-hover-box flex justify-center align-center">
+          <div class="book-title-hover-text">
+            <%= locals.title %>
+          </div>
+        </div>
+      </div>
+
+      <div class="search-card-text-box">
+        <div>
+          <p class="search-card-title"> <b><%= title %> </b> </p>
+        </div>
+
+        <div>
+          <p class="search-card-author"> <%= author_names.join(", ") %> </p>
+        </div>
+        <% if (!!first_publish_date) { %>
+        <div>
+          <p class="search-card-publication"> First Published: <%= first_publish_date %> </p>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </a>

@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import bcrypt from 'bcrypt'
 
-//gemerate secret
+//generate secret
 export default function generateSecret() {
 
     // Generate a random 64-byte (512-bit) hex string

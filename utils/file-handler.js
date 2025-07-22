@@ -196,8 +196,30 @@ export async function getOlImage(imageType, olIdOrUrls, size = 'M') {
 
     console.log(`       > getOlImage: Processing ${totalImages} images for type: ${imageType}...`);
 
-    const promises = idsToProcess.map(id => _processSingleOlImage(imageType, id, size));
-    const results = await Promise.all(promises);
+    const BATCH_SIZE = 10;
+    let results = [];
+
+    for (let i = 0; i < idsToProcess.length; i += BATCH_SIZE) {
+        const batch = idsToProcess.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.all(
+            batch.map(id =>
+                retryWithDelay(() => _processSingleOlImage(imageType, id, size), 2, 300)
+                .catch(err => {
+                    // Return failure object if all retries fail
+                    return {
+                        originalInput: id,
+                        status: 'failed',
+                        reason: `Retry failed: ${err.message}`,
+                        remoteImageUrl: undefined,
+                        localPath: undefined
+                    };
+                })
+            )
+        );
+
+        results = results.concat(batchResults);
+    }
 
     const summary = {
         totalProcessed: totalImages,
@@ -258,4 +280,19 @@ export async function getOlImage(imageType, olIdOrUrls, size = 'M') {
 
     // Return the full results array, or a single result object if input was single
     return isSingleInput ? results[0] : results;
+}
+
+async function retryWithDelay(fn, retries = 2, delayMs = 1000) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastError = err;
+            if (attempt <= retries) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+    }
+    throw lastError;
 }

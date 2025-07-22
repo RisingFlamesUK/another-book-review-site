@@ -90,6 +90,11 @@ a.no-underline {
     padding-right: 10px;
 }
 
+.padding-x20 {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
 .padding-y10 {
     padding-top: 10px;
     padding-bottom: 10px;
@@ -505,6 +510,10 @@ footer {
     position: relative;
 }
 
+.missing-cover-container>img {
+    object-fit: contain;
+}
+
 .book-cover {
     width: 100%;
     max-height: 100%;
@@ -609,42 +618,59 @@ footer {
 /* -------------------------------- */
 /*   8. Pagination   */
 /* -------------------------------- */
-.pagination-controls {
-    margin-top: 20px;
-    gap: 10px;
+
+.pagination ul {
+    display: inline-flex;
+    padding: 8px;
+    background: #fff;
+    border-radius: 50px;
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+    list-style: none;
+    margin: 20px;
 }
 
-.pagination-btn,
-.page-number-btn {
-    padding: 8px 15px;
-    border: 1px solid #ccc;
-    background-color: #f0f0f0;
+/* buttons, numbers, dots */
+.pagination li {
+    margin: 0 4px;
+    padding: 0 12px;
+    height: 36px;
+    line-height: 36px;
+    border-radius: 18px;
     cursor: pointer;
-    border-radius: 5px;
-    transition: background-color 0.2s ease;
+    user-select: none;
+    /* color: #20B2AA; */
+    color: var(--logo-color);
+    font-weight: 500;
+    transition: background 0.3s;
 }
 
-.pagination-btn:hover,
-.page-number-btn:hover:not(.active) {
-    background-color: #e0e0e0;
+.pagination li.btn {
+    padding: 0 16px;
 }
 
-.pagination-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
+.pagination li.numb {
+    width: 36px;
+    text-align: center;
 }
 
-.page-numbers-container {
-    display: flex;
-    gap: 5px;
-    margin: 0 10px;
-}
-
-.page-number-btn.active {
-    background-color: #007bff;
+.pagination li.btn.disabled,
+.pagination li.numb.active {
+    /* background: #20B2AA; */
+    background: var(--logo-color);
     color: white;
-    border-color: #007bff;
     cursor: default;
+}
+
+/* hover effect */
+.pagination li:hover:not(.disabled):not(.active) {
+    background: #e0f7f4;
+}
+
+/* dots style */
+.pagination li.dots {
+    cursor: default;
+    padding: 0;
+    font-size: 18px;
 }
 
 #itemsPerPageDropdown {
@@ -666,6 +692,10 @@ footer {
     border-color: #007bff;
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
+
+/* #pagination-options {
+    margin: 8px 0;
+} */
 
 /* -------------------------------- */
 /*   9. Editions  / Works */
@@ -1084,7 +1114,7 @@ button[type="submit"]:hover {
 }
 
 /* -------------------------------- */
-/*   11. Media Queries  */
+/*   11. Search form and results  */
 /* -------------------------------- */
 
 .search-form {
@@ -1106,6 +1136,122 @@ button[type="submit"]:hover {
     background: none;
     border: none;
     cursor: pointer;
+}
+
+.search-card {
+    background-color: var(--secondary-color);
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.search-card:hover {
+    opacity: 1;
+    visibility: visible;
+}
+
+
+.search-card-img {
+    max-height: 100%;
+}
+
+.search-card-img>img {
+    max-width: 100%;
+    height: 200px;
+    object-fit: contain;
+}
+
+.search-card-img>.missing-cover-overlay {
+    position: absolute;
+    z-index: 10;
+    top: 15px;
+    left: 10%;
+    width: 80%;
+    text-align: center;
+}
+
+.search-card-img>.missing-cover-overlay>.missing-cover-text {
+    background-color: white;
+    color: black;
+    font-size: x-small;
+    width: fit-content;
+    border-radius: 5px;
+    padding: 1px 2px;
+}
+
+.search-card-img>.missing-cover-overlay>.missing-cover-title {
+    background-color: white;
+    color: black;
+    font-size: x-small;
+    width: fit-content;
+    padding: 1px 2px;
+    border-radius: 5px;
+
+}
+
+.search-card-title {
+    text-align: center;
+    margin: 0;
+}
+
+.search-card-author {
+    font-size: smaller;
+    text-align: center;
+    margin: 0;
+}
+
+.search-card-publication {
+    margin: 0;
+    margin-top: 10px;
+    font-size: smaller;
+    text-align: center;
+}
+
+.search-card-link {
+    text-decoration: none;
+    color: inherit;
+}
+
+.search-card-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.search-work-score {
+    position: absolute;
+    top: 180px;
+    right: 7px;
+    background-color: white;
+    z-index: 11;
+}
+
+.search-card-link .search-work-score .star-score {
+    color: var(--hover-contrast-color);
+}
+
+.search-card-text-box {
+    background-color: white;
+    border-radius: 5px;
+    height: fit-content;
+    margin-top: 10px;
+    padding: 10px;
+    width: calc(100% - 20px);
+}
+
+#search-results-grid-container {
+    padding: 20px;
+    padding-right: 23px;
+}
+
+#search-results-grid {
+
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-auto-rows: minmax(var(--min-card-height), auto);
+    justify-items: stretch;
+    align-items: stretch;
 }
 
 
