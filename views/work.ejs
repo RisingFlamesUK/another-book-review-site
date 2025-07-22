@@ -63,13 +63,14 @@
 <div id="work-content-container" class="flex justify-center">
   <div id="work-content" class="flex vertical content-background width-100">
     <div id="work-title" class="flex vertical align-center width-100">
-      <h2 class="details-main-title"><%= displayTitle %> <span class="details-title"><i>(The Works)</i></span></h2>
+      <h2 class="details-main-title"><%= displayTitle %></h2>
+      <p class="details-title"><i>(The Works)</i></p>
     </div>
-    <div class="flex width-100 align-center justify-between padding-bottom10">
-      <div class="flex-1">
-        <div class="button left-margin-20">
+    <div class="flex width-100 align-center justify-between">
+      <div id="work-back-button-container" class="flex-1">
+        <div id="work-back-button" class="button left-margin-20">
           <div class="page-navigation-button">
-             <a href="#" id="backButton">
+            <a href="javascript:void(0)" id="back-button">
               <i class="bi bi-chevron-double-left"></i>
               <i class="button-text">Back</i>
             </a>
@@ -133,19 +134,21 @@
                   </select>
                 </div>
 
-                <div class="filter-controls flex vertical margin-right10">
-                  <label for="languageFilter">Filter by Language:</label>
-                  <select id="languageFilter">
-                    <option value="all">All Languages</option>
-                    <% sortedUniqueLanguages.forEach(lang => { %>
-                    <option value="<%= lang.toLowerCase() %>" <%= (lang.toLowerCase() === 'en' ? 'selected' : '') %>><%= lang %></option>
-                    <% }) %>
-                  </select>
-                </div>
+                <div id="filter-search" class="flex">
+                  <div class="filter-controls flex vertical margin-right10">
+                    <label for="languageFilter">Filter by Language:</label>
+                    <select id="languageFilter">
+                      <option value="all">All Languages</option>
+                      <% sortedUniqueLanguages.forEach(lang => { %>
+                      <option value="<%= lang.toLowerCase() %>" <%= (lang.toLowerCase() === 'en' ? 'selected' : '') %>><%= lang %></option>
+                      <% }) %>
+                    </select>
+                  </div>
 
-                <div class="search-controls flex vertical">
-                  <label for="editionSearch">Search Editions:</label>
-                  <input type="text" id="editionSearch" placeholder="Publisher, Date, ISBN, Title...">
+                  <div class="search-controls flex vertical">
+                    <label for="editionSearch">Search Editions:</label>
+                    <input type="text" id="editionSearch" placeholder="Publisher, Date, ISBN, Title...">
+                  </div>
                 </div>
               </div>
             </div>
@@ -158,6 +161,17 @@
                     <% if (edition.cover) { %>
                     <img src="<%= edition.cover %>" alt="<%= edition.title %> Book Cover" class="work-edition-image">
                     <% } else { %>
+                    <% if (locals.user) { %>
+                    <% if (edition.isInCollection) { %>
+                    <div class="in-collection-badge flex align-center justify-center" data-edition-olid="<%= edition.edition_olid %>">
+                      In My Collection <i class="bi bi-bookmark-check-fill add-books-icon"></i>
+                    </div>
+                    <% } else { %>
+                    <div class="add-books-button button page-navigation-button add-to-collection-btn" data-edition-olid="<%= edition.edition_olid %>">
+                      Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>
+                    </div>
+                    <% } %>
+                    <% } %>
                     <div class="missing-cover-container">
                       <img src="/assets/images/book placeholder.webp" alt="<%= displayTitle %> Book Cover Image" class="no-cover work-edition-image">
 
@@ -171,17 +185,7 @@
                   <%= edition.title %>
                   <p><i>Publisher(s): <%= edition.publishers %> <%= edition.publish_date %></i></p>
 
-                  <% if (locals.user) { %>
-                    <% if (edition.isInCollection) { %>
-                    <div class="in-collection-badge flex align-center justify-center" data-edition-olid="<%= edition.edition_olid %>">
-                      In My Collection <i class="bi bi-bookmark-check-fill add-books-icon"></i>
-                    </div>
-                    <% } else { %>
-                    <div class="add-books-button button page-navigation-button add-to-collection-btn" data-edition-olid="<%= edition.edition_olid %>">
-                      Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>
-                    </div>
-                    <% } %>
-                  <% } %>
+
 
                   <div class="flex justify-between">
                     <p><i>ISBN: <%= edition.isbn || 'Not Found' %></i></p>
@@ -198,6 +202,12 @@
               </a>
               <% } %>
             </div>
+            <div class="edition-card-holder">
+                <!-- edition cards here -->
+                <div id="pagination-controls" class="pagination flex justify-center">
+                  <ul id="pagination-list"></ul>
+                </div>
+              </div>
           </div>
         </div>
       </div>

@@ -1,109 +1,105 @@
 // This file is js/work-editions-script.js
 
-/* global allWorkEditions */ // This is a hint for linting/IDE, confirming it's a global var
+/* global allWorkEditions, userLoggedIn */ // Hints for linting/IDE for global variables
 
 document.addEventListener('DOMContentLoaded', () => {
-
-    const backButton = document.getElementById('backButton');
-
-    // allWorkEditions is passed from the EJS template containing all edition data
-    const allWorkEditionsInitial = allWorkEditions;
-    let currentFilteredAndSortedEditions = [...allWorkEditionsInitial];
-
-    // Get references to all individual edition DOM elements that represent a card
-    // The selector now targets the 'edition-item' class on the 'div.work-edition-group'
+    // ──────────────────────────────
+    // 📌 DOM Elements
+    const backButton = document.getElementById('back-button');
     const editionCardsContainer = document.querySelector('.edition-card-holder');
-    const allEditionDomElements = Array.from(editionCardsContainer.querySelectorAll('.edition-item'));
-
-    // Create a map from edition_olid to its DOM element for efficient lookup
-    const editionDomMap = new Map();
-    allEditionDomElements.forEach(el => {
-        editionDomMap.set(el.dataset.editionOlid, el);
-    });
-
-    // Get filter and search elements
+    const paginationList = document.getElementById('pagination-list');
     const languageFilter = document.getElementById('languageFilter');
     const editionSearchInput = document.getElementById('editionSearch');
     const sortOrderSelect = document.getElementById('sortOrder');
-    const hasAnyCollectionItem = allWorkEditionsInitial.some(e => e.isInCollection);
-    const collectionLanguagesAvailable = new Set();
 
-    // Populate collectionLanguagesAvailable if there are any collection items
-    if (hasAnyCollectionItem) {
-        allWorkEditionsInitial.forEach(edition => {
-            if (edition.isInCollection && edition.languages && edition.languages.length > 0) {
-                edition.languages.forEach(lang => {
+    // ──────────────────────────────
+    // ⚙️ Initialization
+    const mobileQuery = window.matchMedia('(max-width:800px)');
+    let ITEMS_PER_PAGE = mobileQuery.matches ? 5 : 10; // Responsive items per page
+    let currentPage = 1;
+
+    // allWorkEditions is passed from the EJS template containing all edition data
+    const allWorkEditionsInitial = allWorkEditions; // Stores the original, immutable data
+    let currentFilteredAndSortedEditions = [...allWorkEditionsInitial]; // Mutable array for current state
+
+    // Populate default language filter based on collection logic
+    // This logic runs once on DOMContentLoaded
+    (() => {
+        const hasAnyCollectionItem = allWorkEditionsInitial.some(e => e.isInCollection);
+        const collectionLanguagesAvailable = new Set();
+
+        if (hasAnyCollectionItem) {
+            allWorkEditionsInitial
+                .filter(edition => edition.isInCollection && Array.isArray(edition.languages))
+                .forEach(edition => edition.languages.forEach(lang => {
                     const lowerCaseLang = lang.toLowerCase();
                     if (lowerCaseLang !== 'language not found') {
                         collectionLanguagesAvailable.add(lowerCaseLang);
                     }
-                });
-            }
-        });
-    }
-    // Determine the initial selected language
-    let initialSelectedLanguage = languageFilter.value;
+                }));
+        }
 
-    if (!hasAnyCollectionItem && initialSelectedLanguage === 'all') {
-        // Rule 1: No collection items at all, AND the filter is currently set to 'all'
-        // -> Default to 'english'.
-        initialSelectedLanguage = 'english';
-    } else if (hasAnyCollectionItem && initialSelectedLanguage === 'all' && collectionLanguagesAvailable.size > 0) {
-        // Rule 2: There are collection items, AND the filter is currently 'all', AND there are specific collection languages available
-        // -> Default to the first available language from the collection.
-        initialSelectedLanguage = Array.from(collectionLanguagesAvailable)[0];
-        console.log(`Initial default: Setting language filter to first collection language: '${initialSelectedLanguage}'.`);
-    } else if (hasAnyCollectionItem && initialSelectedLanguage !== 'all' && collectionLanguagesAvailable.size > 0 && !collectionLanguagesAvailable.has(initialSelectedLanguage.toLowerCase())) {
-        // Rule 3: There are collection items, AND a specific language is currently selected,
-        // BUT no collection items match that specific language AND other collection languages are available.
-        // -> Default to the first available language from the collection.
-        initialSelectedLanguage = Array.from(collectionLanguagesAvailable)[0];
-        console.log(`Initial default: Adjusting language filter from existing '${languageFilter.value}' to first collection language: '${initialSelectedLanguage}' (no matching collection items).`);
-    }
-    // In all other cases (e.g., a specific language is already selected and has matching collection items, or no collection items but filter is already on a specific language),
-    // initialSelectedLanguage will remain as its current value.
+        let initialSelectedLanguage = languageFilter.value;
 
-    // Apply the determined initial language to the UI element
-    languageFilter.value = initialSelectedLanguage;
+        if (!hasAnyCollectionItem && initialSelectedLanguage === 'all') {
+            // Rule 1: No collection items at all, AND the filter is currently set to 'all' -> Default to 'english'.
+            initialSelectedLanguage = 'english';
+        } else if (hasAnyCollectionItem && initialSelectedLanguage === 'all' && collectionLanguagesAvailable.size > 0) {
+            // Rule 2: There are collection items, AND the filter is currently 'all', AND there are specific collection languages available
+            // -> Default to the first available language from the collection.
+            initialSelectedLanguage = Array.from(collectionLanguagesAvailable)[0];
+            console.log(`Initial default: Setting language filter to first collection language: '${initialSelectedLanguage}'.`);
+        } else if (hasAnyCollectionItem && initialSelectedLanguage !== 'all' && collectionLanguagesAvailable.size > 0 && !collectionLanguagesAvailable.has(initialSelectedLanguage.toLowerCase())) {
+            // Rule 3: There are collection items, AND a specific language is currently selected,
+            // BUT no collection items match that specific language AND other collection languages are available.
+            // -> Default to the first available language from the collection.
+            initialSelectedLanguage = Array.from(collectionLanguagesAvailable)[0];
+            console.log(`Initial default: Adjusting language filter from existing '${languageFilter.value}' to first collection language: '${initialSelectedLanguage}' (no matching collection items).`);
+        }
+        // In all other cases, initialSelectedLanguage remains its current value.
 
+        languageFilter.value = initialSelectedLanguage;
+    })();
 
+    // Adjust pagination size on screen resize
+    mobileQuery.addEventListener('change', e => {
+        ITEMS_PER_PAGE = e.matches ? 5 : 10;
+        currentPage = 1; // Reset to first page on size change
+        applyFiltersSearchSort(); // Re-apply all logic and render
+    });
+
+    // ──────────────────────────────
+    // 📅 Utility to parse dates (prioritizes year, then full date)
     function parsePublishDate(dateString) {
-        // Attempt to parse various date formats. Prioritize year, then month, then day.
-        // Example formats: "1999", "March 1, 1999", "1999-03-01"
-
         if (!dateString) {
             return null; // No date string, cannot parse
         }
 
         const yearMatch = dateString.match(/\b(\d{4})\b/);
         if (yearMatch) {
-            const year = parseInt(yearMatch[1]);
-            // We'll create a Date object at the start of the year for comparison.
-            return new Date(year, 0, 1); // January 1st of the year
+            return new Date(parseInt(yearMatch[1]), 0, 1); // January 1st of the year
         }
 
-        // Fallback for more complex date strings
         try {
             const date = new Date(dateString);
             if (!isNaN(date.getTime())) { // Check if date is valid
                 return date;
             }
         } catch (e) {
-            // Ignore parsing errors, return null
+            // Ignore parsing errors
         }
 
         return null; // Could not parse a valid date
     }
 
-    function applyFiltersAndSearchAndSort() {
+    // ──────────────────────────────
+    // 🔄 Main pipeline: filter, search, sort, then render
+    function applyFiltersSearchSort() {
         const searchTerm = editionSearchInput.value.toLowerCase().trim();
-        // IMPORTANT: Now we directly use languageFilter.value as it's already set correctly
-        let selectedLanguage = languageFilter.value;
+        const selectedLanguage = languageFilter.value.toLowerCase();
         const selectedSortOrder = sortOrderSelect.value;
 
-        // No more logic here to modify `selectedLanguage` based on collection items
-        // That logic now happens once on DOMContentLoaded
-
+        // Apply filtering and searching
         let filteredEditions = allWorkEditionsInitial.filter(edition => {
             const editionTitle = edition.title ? edition.title.toLowerCase() : '';
             const editionPublishDate = edition.publish_date ? edition.publish_date.toLowerCase() : '';
@@ -124,37 +120,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const matchesLanguageFilter = (
                 selectedLanguage === 'all' ||
-                editionLanguages.includes(selectedLanguage.toLowerCase())
+                editionLanguages.includes(selectedLanguage)
             );
 
             return matchesSearch && matchesLanguageFilter;
         });
 
-        // Apply sorting to the filtered editions
+        // Apply sorting
         filteredEditions.sort((a, b) => {
             // 1. Prioritize editions in collection
             const aIsInCollection = a.isInCollection ? 1 : 0;
             const bIsInCollection = b.isInCollection ? 1 : 0;
 
             if (aIsInCollection !== bIsInCollection) {
-                return bIsInCollection - aIsInCollection;
+                return bIsInCollection - aIsInCollection; // In collection first
             }
 
+            // 2. Sort by publish date
             const dateA = parsePublishDate(a.publish_date);
             const dateB = parsePublishDate(b.publish_date);
 
             if (!dateA && !dateB) {
-                return a.edition_olid.localeCompare(b.edition_olid);
+                return a.edition_olid.localeCompare(b.edition_olid); // Fallback to OLID if no dates
             }
-            if (!dateA) return 1;
-            if (!dateB) return -1;
+            if (!dateA) return 1; // Editions with no date go to end
+            if (!dateB) return -1; // Editions with date come first
 
             let comparison = dateA.getTime() - dateB.getTime();
 
+            // 3. If dates are equal, sort by OLID for consistent order
             if (comparison === 0) {
                 comparison = a.edition_olid.localeCompare(b.edition_olid);
             }
 
+            // Apply sort order (descending for latest date first)
             if (selectedSortOrder === 'desc') {
                 comparison *= -1;
             }
@@ -162,29 +161,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         currentFilteredAndSortedEditions = filteredEditions;
-        renderFilteredEditions(currentFilteredAndSortedEditions);
+        currentPage = 1; // Always reset to page 1 after filter/search/sort
+        renderPage(); // Render the first page of results
     }
 
-
-    function renderFilteredEditions(filteredAndSortedEditions) {
-        let visibleCount = 0;
-
+    // ──────────────────────────────
+    // 🎞️ Render current page of editions + update pagination controls
+    function renderPage() {
         // Clear existing cards
         editionCardsContainer.innerHTML = '';
 
-        if (filteredAndSortedEditions.length === 0) {
-            // Handle "No matching editions" message directly here
+        const start = (currentPage - 1) * ITEMS_PER_PAGE;
+        const pageItems = currentFilteredAndSortedEditions.slice(start, start + ITEMS_PER_PAGE);
+
+        // Display message if no matching editions
+        if (pageItems.length === 0) {
             const existingMessage = document.getElementById('noMatchingEditionsMessage');
             if (!existingMessage) {
                 const noEditionsMessage = document.createElement('p');
                 noEditionsMessage.id = 'noMatchingEditionsMessage';
                 noEditionsMessage.classList.add('no-results-message');
 
-                if (allWorkEditionsInitial.length === 0) { // Check against original data for initial message
-                    noEditionsMessage.textContent = 'No editions found for this work.';
-                } else {
-                    noEditionsMessage.textContent = 'No matching editions found for the current filters.';
-                }
+                noEditionsMessage.textContent = allWorkEditionsInitial.length === 0 ?
+                    'No editions found for this work.' :
+                    'No matching editions found for the current filters.';
 
                 const editionsHeader = document.querySelector('.work-editions-header');
                 if (editionsHeader) {
@@ -195,13 +195,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             // Remove "No matching editions" message if it exists
-            const existingMessage = document.getElementById('noMatchingEditionsMessage');
-            if (existingMessage) {
-                existingMessage.remove();
-            }
+            document.getElementById('noMatchingEditionsMessage')?.remove();
 
-            // Dynamically create and append DOM elements for the filtered and sorted editions
-            filteredAndSortedEditions.forEach(edition => {
+            // Dynamically create and append DOM elements for the current page's editions
+            pageItems.forEach(edition => {
                 const editionLinkCard = document.createElement('a');
                 editionLinkCard.href = `/edition/${edition.edition_olid}`;
                 editionLinkCard.classList.add('edition-link-card');
@@ -213,7 +210,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Create image/cover div
                 const floatLeftDiv = document.createElement('div');
                 floatLeftDiv.classList.add('float-left');
-
                 let coverHtml = '';
                 if (edition.cover) {
                     coverHtml = `<img src="${edition.cover}" alt="${edition.title} Book Cover" class="work-edition-image">`;
@@ -230,17 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 floatLeftDiv.innerHTML = coverHtml;
                 editionDiv.appendChild(floatLeftDiv);
 
-                // Add title
-                const titleText = document.createTextNode(edition.title || 'Unknown Title');
-                editionDiv.appendChild(titleText);
-
-                // Add publisher and publish date
-                const publisherParagraph = document.createElement('p');
-                publisherParagraph.innerHTML = `<i>Publisher(s): ${edition.publishers || 'Unknown'} ${edition.publish_date || 'Unknown Date'}</i>`;
-                editionDiv.appendChild(publisherParagraph);
-
                 // Conditional rendering for "Add to Collection" / "In My Collection"
-                if (userLoggedIn) {
+                if (typeof userLoggedIn !== 'undefined' && userLoggedIn) {
                     if (edition.isInCollection) {
                         const inCollectionBadge = document.createElement('div');
                         inCollectionBadge.classList.add('in-collection-badge', 'flex', 'align-center', 'justify-center');
@@ -256,6 +243,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                // Add title
+                const titleText = document.createElement('h3'); // Using h3 for semantic heading
+                titleText.textContent = edition.title || 'Unknown Title';
+                editionDiv.appendChild(titleText);
+
+                // Add publisher and publish date
+                const publisherParagraph = document.createElement('p');
+                publisherParagraph.innerHTML = `<i>Publisher(s): ${edition.publishers || 'Unknown'} ${edition.publish_date || 'Unknown Date'}</i>`;
+                editionDiv.appendChild(publisherParagraph);
+
                 // Add ISBN and Languages
                 const bottomRowDiv = document.createElement('div');
                 bottomRowDiv.classList.add('flex', 'justify-between');
@@ -265,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 bottomRowDiv.appendChild(isbnParagraph);
 
                 const languagesParagraph = document.createElement('p');
-                let languagesDisplay = (edition.languages && edition.languages.length > 0) ? edition.languages.join(', ') : 'Language Not Found';
+                const languagesDisplay = (edition.languages && edition.languages.length > 0) ? edition.languages.join(', ') : 'Language Not Found';
                 languagesParagraph.innerHTML = `<i>${languagesDisplay}</i>`;
                 bottomRowDiv.appendChild(languagesParagraph);
 
@@ -273,36 +270,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 editionLinkCard.appendChild(editionDiv);
                 editionCardsContainer.appendChild(editionLinkCard);
-                visibleCount++; // This is effectively the count of rendered items
             });
+            attachAddButtonListeners(); // Re-attach event listeners to newly created buttons
         }
-        // After rendering, re-attach event listeners to newly created buttons
-        attachAddButtonListeners();
+
+        renderPaginationControls(currentFilteredAndSortedEditions.length); // Update pagination UI
     }
 
+    // ──────────────────────────────
+    // 🏷️ Set event listeners on “Add to Collection” buttons
     function attachAddButtonListeners() {
         const addButtons = document.querySelectorAll('.add-to-collection-btn');
         addButtons.forEach(button => {
-            // Remove any existing listeners to prevent duplicates if renderFilteredEditions is called multiple times
+            // Remove any existing listeners to prevent duplicates if renderPage is called multiple times
             button.removeEventListener('click', handleAddButtonClick);
             button.addEventListener('click', handleAddButtonClick);
         });
     }
 
+    // ──────────────────────────────
+    // ➕ Handle adding edition to collection
     async function handleAddButtonClick(event) {
-        event.preventDefault(); // Prevent the default link behavior if inside an <a> tag
+        event.preventDefault(); // Prevent default link behavior if inside an <a> tag
         event.stopPropagation(); // Stop propagation to prevent parent link from being followed
 
         const button = event.currentTarget; // The button that was clicked
         const editionOlid = button.dataset.editionOlid;
 
-        // Disable button to prevent multiple clicks
+        // Disable button to prevent multiple clicks and provide feedback
         button.disabled = true;
         button.style.opacity = '0.7';
-        button.textContent = 'Adding...'; // Provide feedback
+        button.textContent = 'Adding...';
 
+        let response; // Declare response outside try-catch for finally block access
         try {
-            const response = await fetch('/add-edition', {
+            response = await fetch('/add-edition', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -322,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     editionToUpdate.isInCollection = true;
                 }
                 // Re-render the editions to show the updated status (badge instead of button)
-                applyFiltersAndSearchAndSort(); // This will re-render all filtered/sorted editions
+                applyFiltersSearchSort(); // This will re-filter/sort and then render the current page
             } else {
                 console.error(`Error adding edition ${editionOlid}:`, data.error);
                 alert(`Error: ${data.error}`);
@@ -335,33 +337,97 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response || !response.ok) {
                 button.disabled = false;
                 button.style.opacity = '1';
-                button.innerHTML = `Add to my Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>`; // Restore original text/icon
+                button.innerHTML = `Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>`; // Restore original text/icon
             }
         }
     }
 
-    // Add event listeners for filter and search input changes
-    languageFilter.addEventListener('change', applyFiltersAndSearchAndSort);
-    editionSearchInput.addEventListener('input', applyFiltersAndSearchAndSort);
-    sortOrderSelect.addEventListener('change', applyFiltersAndSearchAndSort);
+    // ──────────────────────────────
+    // 🔢 Pagination controls builder
+    function renderPaginationControls(totalItems) {
+        const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+        paginationList.innerHTML = ''; // Clear existing pagination controls
 
-    // Initial render when the page loads
-    applyFiltersAndSearchAndSort();
+        // --- MODIFICATION 1: Hide pagination if only one page or no results ---
+        if (totalPages <= 1) {
+            return; // Do not display pagination if there's only 0 or 1 page
+        }
 
-    if (backButton) {
-        backButton.addEventListener('click', (event) => {
-            event.preventDefault(); // Prevent default link behavior
-            console.log('Going back in history...');
-            window.history.back(); // Simply go back one step
-        });
+        const isMobile = mobileQuery.matches;
+        const pageStep = isMobile ? 1 : 2; // Fewer page numbers on mobile
+
+        // Helper to create and append pagination buttons/dots
+        const createPaginationButton = (text, pageNumber, className = '') => {
+            const listItem = document.createElement('li');
+            listItem.textContent = text;
+            listItem.className = className;
+            if (!className.includes('disabled') && !className.includes('active') && text !== '...') {
+                listItem.addEventListener('click', () => goToPage(pageNumber));
+            }
+            paginationList.appendChild(listItem);
+        };
+
+        // "Previous" button
+        createPaginationButton('Prev', currentPage - 1, `btn${currentPage === 1 ? ' disabled' : ''}`);
+
+        // Render page numbers
+        // --- MODIFICATION 2: Adjust constant for fewer page numbers in condensed view ---
+        if (totalPages <= pageStep * 2 + 4) { // If few pages, show all (changed from +6 to +4)
+            for (let i = 1; i <= totalPages; i++) {
+                createPaginationButton(i, i, `numb${i === currentPage ? ' active' : ''}`);
+            }
+        } else { // If many pages, show condensed view with dots
+            if (currentPage > pageStep * 2 + 1) { // This part might need adjustment too based on new constant if you want tighter dot placement.
+                // For simplicity, keeping this as is, but typically this constant should align with the main one.
+                createPaginationButton(1, 1, 'numb');
+                createPaginationButton('...', null, 'dots');
+            }
+            const minPage = Math.max(1, currentPage - pageStep);
+            const maxPage = Math.min(totalPages, currentPage + pageStep);
+            for (let i = minPage; i <= maxPage; i++) {
+                createPaginationButton(i, i, `numb${i === currentPage ? ' active' : ''}`);
+            }
+            if (currentPage < totalPages - pageStep * 2) { // This also might need adjustment based on new constant.
+                createPaginationButton('...', null, 'dots');
+                createPaginationButton(totalPages, totalPages, 'numb');
+            }
+        }
+
+        // "Next" button
+        createPaginationButton('Next', currentPage + 1, `btn${currentPage === totalPages || totalPages === 0 ? ' disabled' : ''}`);
     }
-    // This listener is crucial for detecting when a page is loaded from BFcache
-    window.addEventListener('pageshow', (event) => {
-        // Check if the page was loaded from the browser's cache
-        if (event.persisted) {
-            // If it was, force a reload to get fresh data
+
+    // ──────────────────────────────
+    // ➡️ Navigate to a specific page
+    function goToPage(page) {
+        const totalPages = Math.ceil(currentFilteredAndSortedEditions.length / ITEMS_PER_PAGE);
+        if (page < 1 || page > totalPages) return; // Prevent navigating out of bounds
+        currentPage = page;
+        renderPage(); // Render the new page
+    }
+
+    // ──────────────────────────────
+    // ↩️ Back button functionality
+    backButton?.addEventListener('click', e => {
+        e.preventDefault();
+        window.history.back(); // Go back in browser history
+    });
+
+    // ──────────────────────────────
+    // 🚨 Handle session restores (BFCache) - force reload for fresh data
+    window.addEventListener('pageshow', e => {
+        if (e.persisted) {
             console.log('Page loaded from BFcache, forcing refresh...');
             window.location.reload();
         }
     });
+
+    // ──────────────────────────────
+    // 🏁 Initial kickoff: Apply filters/search/sort and render the first page
+    languageFilter.addEventListener('change', applyFiltersSearchSort);
+    editionSearchInput.addEventListener('input', applyFiltersSearchSort);
+    sortOrderSelect.addEventListener('change', applyFiltersSearchSort);
+
+    // Initial render when the page loads
+    applyFiltersSearchSort();
 });

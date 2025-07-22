@@ -9,19 +9,21 @@
 
 <div class="review-form-card content-background">
   <form id="reviewForm" data-review-id="<%= initialReviewId %>" class="flex vertical align-center">
-
+    <h3 class="edit-text"><%= initialReviewId ? 'Edit Your Review' : 'Add Your Review' %></h3>
     <div id="review-form-title-score" class="flex justify-between align-center width-100">
-      <h3><%= initialReviewId ? 'Edit Your Review' : 'Add Your Review' %></h3>
-
       <div id="review-form-score-container" class="form-group review-form-score-group flex align-center justify-center">
-        <label>Your Score:</label>
-        <div class="user-stars-container form-star-input" id="reviewStarPicker" data-original-score="<%= initialScore %>">
-          <div id="reviewStarIcons">
-            <!-- Stars go here -->
+        <label>Score:</label>
+        <div class="flex">
+          <div class="user-stars-container form-star-input" id="reviewStarPicker" data-original-score="<%= initialScore %>">
+            <div id="reviewStarIcons">
+              <!-- Stars go here -->
+            </div>
+          </div>
+          <div>
+            <input type="hidden" name="score" id="reviewFormScoreInput" value="<%= initialScore %>">
+            <span id="selected-star-score" class="margin-left10"><%= initialScore %></span>
           </div>
         </div>
-        <input type="hidden" name="score" id="reviewFormScoreInput" value="<%= initialScore %>">
-        <span id="selected-star-score" class="margin-left10"><%= initialScore %></span>
       </div>
 
     </div>

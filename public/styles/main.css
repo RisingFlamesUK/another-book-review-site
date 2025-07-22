@@ -23,11 +23,17 @@
 /* -------------------------------- */
 /*  2. General / Base Styles */
 /* -------------------------------- */
+html {
+    height: 100%;
+    width: 100%;
+}
+
 body {
-    height: 100vh;
-    max-width: 100vw;
-    width: 100vw;
-    min-width: 410px;
+    height: 100%;
+    min-height: 100%;
+    max-width: 100%;
+    min-width: 356px;
+    width: 100%;
     padding: 0;
     margin: 0;
 
@@ -39,7 +45,6 @@ body {
 
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
 
     background-image: url('/assets/images/background-square.jpg');
     background-repeat: no-repeat;
@@ -75,6 +80,10 @@ a.no-underline {
 
 .width-100 {
     width: 100%;
+}
+
+.height-100 {
+    height: 100%;
 }
 
 .bold {
@@ -191,8 +200,8 @@ header {
 }
 
 main {
-    overflow-y: auto;
-    max-height: calc(100vh - var(--header-height) - var(--footer-height));
+    width: 100%;
+    max-height: calc(100% - var(--header-height) - var(--footer-height));
     flex-grow: 1;
     margin-bottom: 0;
     display: flex;
@@ -213,8 +222,10 @@ footer {
 
 .content-container {
     position: relative;
-    margin: 40px 5% 20px 5%;
+    max-height: calc(100% - 10px);
+    margin: 5px 5% 5px 5%;
     flex-grow: 1;
+    overflow: auto;
 }
 
 .followon-container {
@@ -274,6 +285,10 @@ footer {
 
 #site-logo {
     height: 55px;
+}
+
+.logo-text {
+    flex-shrink: 1;
 }
 
 /* Base Icon Styles (less specific) */
@@ -693,10 +708,6 @@ footer {
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
-/* #pagination-options {
-    margin: 8px 0;
-} */
-
 /* -------------------------------- */
 /*   9. Editions  / Works */
 /* -------------------------------- */
@@ -705,14 +716,17 @@ footer {
 }
 
 .details-title {
-    font-size: medium;
+    font-size: .8rem;
     font-weight: 400;
+    padding: 0;
+    margin: 3px 0 0 0;
 }
 
 .add-books-button {
-    position: absolute;
+    /* position: absolute;
     top: 10px;
-    right: 10px;
+    right: 10px; */
+    float: right;
     width: 100px;
     background-color: rgb(213, 238, 146);
 }
@@ -728,9 +742,10 @@ footer {
 }
 
 .in-collection-badge {
-    position: absolute;
+    /* position: absolute;
     top: 10px;
-    right: 10px;
+    right: 10px; */
+    float: right;
     width: 100px;
     background-color: var(--highlight-color);
     color: white;
@@ -752,6 +767,7 @@ footer {
 
 .right-column {
     margin-left: 20px;
+    max-width: calc(100% - 20px);
 }
 
 .work-cover-container,
@@ -895,6 +911,19 @@ footer {
     margin: 20px 0 0 0 !important;
 }
 
+.back-button-container {
+    min-width: 80px;
+}
+
+#work-back-button-container {
+    position: relative;
+}
+
+#work-back-button {
+    position: relative;
+    top: -5px;
+}
+
 #review-form-buttons {
     gap: 10px;
 }
@@ -913,6 +942,19 @@ footer {
     padding: 20px;
 }
 
+#edition-title h2 {
+    text-align: center;
+}
+
+#work-authors-container {
+   padding: 0 10px;
+   margin: 5px 0 10px 0;
+}
+
+#work-authors {
+    margin: 0;
+}
+
 #edition-add-books-button,
 #edition-in-collection-badge {
     position: relative !important;
@@ -921,6 +963,7 @@ footer {
 }
 
 #edition-header {
+    position: relative;
     margin: 0 20px 10px 0;
     padding-bottom: 10px;
     border-bottom: 1px solid black;
@@ -934,13 +977,15 @@ footer {
 #work-details,
 #edition-details {
     margin: 0px 20px 20px 20px;
+    max-height: calc(100% - 40px);
     padding: 20px;
     border-radius: 10px;
     background-color: var(--secondary-color);
+    flex-grow: 1;
 }
 
 #work-details {
-    width: calc(100% - 40px)
+    width: calc(100% - 40px);
 }
 
 
@@ -990,21 +1035,29 @@ footer {
     max-width: 1200px;
 }
 
+#edition-content {
+    padding: 0 5px 0 5px;
+
+}
+
+
 /* -------------------------------- */
 /* 10. Welcome / Forms / Tabs */
 /* -------------------------------- */
 .welcome {
     position: relative;
     margin: 0;
-    padding: 1rem 0;
+    padding: 0 10px 10px 10px;
     align-self: center;
     font-size: larger;
 }
 
 .form-container {
     width: 400px;
-    background-color: bisque;
+    max-width: 90%;
+    background-color: var(--primary-color);
     padding: 1rem 2rem;
+    border-radius: 5px;
 }
 
 .form-background {
@@ -1014,6 +1067,7 @@ footer {
 
 .tab-container {
     width: 400px;
+    max-width: calc(100% - 20px);
     margin: 20px auto;
     border: 1px solid black;
     border-radius: 5px;
@@ -1258,9 +1312,306 @@ button[type="submit"]:hover {
 /* -------------------------------- */
 /*   12. Media Queries  */
 /* -------------------------------- */
-@media (min-width: 992px) {
+
+@media (max-width:480px) {
+
+    /* smartphones, iPhone, portrait 480x320 phones */
+    /*#####################
+             Page
+      #####################*/
+    .content-container {
+        margin-top: 5px;
+        margin-bottom: 5px;
+        max-height: calc(100% - 2px);
+    }
+
+    /*#####################
+             Header
+      #####################*/
+    h1 {
+        font-size: 1.2em;
+    }
+
+    .header-left {
+        margin-left: 10px;
+    }
+
+    .header-right {
+        margin-right: 10px;
+    }
+
+    .header-right div a {
+        max-width: 60px;
+        font-size: 0.9em;
+        text-align: center;
+    }
+
+    .bi-house {
+        font-size: 1.75em;
+    }
+
+    .bi-person-bounding-box,
+    .bi-person-circle {
+        font-size: 2em;
+    }
+
+    #banner {
+        max-width: 180px;
+        align-self: center;
+    }
+
+    #site-logo {
+        height: 40px;
+    }
+
+    /*#####################
+          Search Results
+      #####################*/
+
+    .pagination ul {
+        display: inline-flex;
+        padding: .5em;
+        background: #fff;
+        border-radius: 50px;
+        box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        list-style: none;
+        margin: 0;
+    }
+
+    /* buttons, numbers, dots */
+    .pagination li {
+        margin: 0 0.1em;
+        padding: 0;
+        height: 36px;
+        line-height: 36px;
+        border-radius: 18px;
+        cursor: pointer;
+        user-select: none;
+        /* color: #20B2AA; */
+        color: var(--logo-color);
+        font-weight: 500;
+        transition: background 0.3s;
+    }
+
+    .pagination li.btn {
+        padding: 0;
+    }
+
+    .pagination li.numb {
+        width: 36px;
+        text-align: center;
+    }
+
+    .pagination li.btn.disabled,
+    .pagination li.numb.active {
+        /* background: #20B2AA; */
+        background: var(--logo-color);
+        color: white;
+        cursor: default;
+    }
+
+    /* hover effect */
+    .pagination li:hover:not(.disabled):not(.active) {
+        background: #e0f7f4;
+    }
+
+    /* dots style */
+    .pagination li.dots {
+        cursor: default;
+        padding: 0;
+        font-size: 18px;
+    }
+
+    #pagination-controls {
+        margin: 0;
+        margin-top: 1rem;
+    }
+
+    /*#####################
+            My Books
+    #####################*/
+    .card-holder-cards {
+        display: grid;
+        gap: var(--card-gap);
+        padding: 10px 0 0 0;
+        grid-template-columns: repeat(auto-fill, minmax(100%, 1fr));
+        grid-auto-rows: minmax(var(--min-card-height), auto);
+        justify-items: center;
+        align-items: stretch;
+    }
+
+    .card-content-container {
+        flex-direction: column !important;
+    }
+
+    .card-content-container.vertical {
+        flex-direction: column !important;
+    }
+
+    .card-holder-header {
+        padding: 10px;
+        justify-content: center !important;
+    }
+
+    .button-text {
+        font-size: 0.7rem;
+    }
+
+    .filter-controls {
+        margin-left: 0;
+    }
+
+    #filter-search {
+        flex-direction: column;
+        flex-grow: 1;
+        margin-left: 10px;
+    }
+
+    /*#####################
+          Works
+      #####################*/
+    .left-column {
+        align-items: center;
+    }
+
+    .right-column {
+        margin-left: 0;
+        margin-bottom: 10px;
+    }
+
+    .work-editions-header {
+        flex-direction: column;
+    }
+
+    .details-main-title {
+        text-align: center;
+        margin-top: 0;
+        padding: 0;
+    }
+
+    .filter-search-controls {
+        max-width: calc(100%);
+        flex-direction: column;
+        justify-content: start;
+    }
+
+    .add-books-button,
+    .in-collection-badge {
+        font-size: 0.75em;
+        padding: 5px;
+        width: 85px;
+    }
+
+    .work-editions-container {
+        margin: 0;
+    }
+
+    #work-back-button {
+        margin: 0;
+    }
+
+    #work-content {
+        padding: 10px;
+    }
+
+    #work-details {
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 0;
+        margin: 0 0px 10px 0px;
+    }
+
+    /*#####################
+        Edition
+    #####################*/
+
+    .missing-cover-overlay-M {
+        top: 30px;
+        left: 10%;
+        width: 80%;
+    }
+    
+    .edition-collection-status-container {
+        min-width: 80px;
+    }
+
+    .edit-text {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    #edition-header-spacer {
+        width: 80px;
+    }
+
+    #edition-cover-user-info {
+        margin: 0;
+    }
+
+    #edition-text {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: solid black 1px;
+    }
+
+    #edition-header {
+        margin: 10px 0 10px 0;
+        padding: 0;
+    }
+
+    #edition-details {
+        flex-direction: column;
+    }
+
+    #review-form-score-container label {
+        max-width: 3em;
+        margin-right: 5px;
+    }
+
+    #work-authors {
+    margin: 0;
+    font-size: small;
+    text-align: center;
+}
+}
+
+
+
+
+
+@media (min-width:481px) {
+    /* portrait e-readers (Nook/Kindle), smaller tablets @ 600 or @ 640 wide. */
+
+    .header-left {
+        margin-left: 2rem;
+    }
+
+    .header-right {
+        margin-right: 2rem;
+        position: relative;
+    }
+
+}
+
+@media (min-width:641px) {
+    /* portrait tablets, portrait iPad, landscape e-readers, landscape 800x480 or 854x480 phones */
+
+}
+
+@media (min-width:961px) {
+
+    /* tablet, landscape iPad, lo-res laptops ands desktops */
     body {
         background-image: url('/assets/images/background-wide2.jpg');
         background-position: bottom right;
     }
+
+}
+
+@media (min-width:1025px) {
+    /* big landscape tablets, laptops, and desktops */
+}
+
+@media (min-width:1281px) {
+    /* hi-res laptops and desktops */
 }

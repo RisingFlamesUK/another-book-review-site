@@ -1,4 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const isMobile = window.matchMedia("(max-width: 800px)");
+  let isSmallScreen = isMobile.matches;
+
+  isMobile.addEventListener('change', e => {
+    isSmallScreen = e.matches;
+    renderPage(currentPage);
+  });
+
   const dataEl = document.getElementById('search-cards-data');
   if (!dataEl) return;
 
@@ -46,47 +54,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updatePaginationControls() {
-    const totalPages = Math.ceil(cards.length / ITEMS_PER_PAGE);
-    paginationList.innerHTML = '';
-    const step = 2;
+  const totalPages = Math.ceil(cards.length / ITEMS_PER_PAGE);
+  paginationList.innerHTML = '';
 
-    const mkLi = (txt, onClick, cls = '') => {
-      const li = document.createElement('li');
-      li.textContent = txt;
-      if (cls) li.className = cls;
-      if (!cls.includes('disabled') && !cls.includes('active') && !cls.includes('dots')) {
-        li.addEventListener('click', onClick);
-      }
-      paginationList.appendChild(li);
-    };
-
-    // Prev button
-    mkLi('Prev', () => renderPage(currentPage - 1), currentPage === 1 ? 'btn disabled' : 'btn');
-
-    // Page numbers
-    if (totalPages <= step * 2 + 6) {
-      for (let i = 1; i <= totalPages; i++) {
-        mkLi(i, () => renderPage(i), `numb${i === currentPage ? ' active' : ''}`);
-      }
-    } else {
-      if (currentPage > step * 2 + 1) {
-        mkLi(1, () => renderPage(1), 'numb');
-        mkLi('...', null, 'dots');
-      }
-      const startPg = Math.max(1, currentPage - step);
-      const endPg = Math.min(totalPages, currentPage + step);
-      for (let i = startPg; i <= endPg; i++) {
-        mkLi(i, () => renderPage(i), `numb${i === currentPage ? ' active' : ''}`);
-      }
-      if (currentPage < totalPages - step * 2) {
-        mkLi('...', null, 'dots');
-        mkLi(totalPages, () => renderPage(totalPages), 'numb');
-      }
+  const mkLi = (txt, onClick, cls = '') => {
+    const li = document.createElement('li');
+    li.textContent = txt;
+    if (cls) li.className = cls;
+    if (!cls.includes('disabled') && !cls.includes('active') && !cls.includes('dots')) {
+      li.addEventListener('click', onClick);
     }
+    paginationList.appendChild(li);
+  };
 
-    // Next button
-    mkLi('Next', () => renderPage(currentPage + 1), currentPage === totalPages ? 'btn disabled' : 'btn');
+  // Prev button
+  mkLi('Prev', () => renderPage(currentPage - 1), currentPage === 1 ? 'btn disabled' : 'btn');
+
+  let showBefore = isSmallScreen ? 1 : 2;
+  let showAfter = isSmallScreen ? 1 : 2;
+
+  // First page
+  if (currentPage > showBefore + 1) {
+    mkLi(1, () => renderPage(1), 'numb');
+    mkLi('...', null, 'dots');
   }
+
+  // Middle pages
+  const startPg = Math.max(1, currentPage - showBefore);
+  const endPg = Math.min(totalPages, currentPage + showAfter);
+  for (let i = startPg; i <= endPg; i++) {
+    mkLi(i, () => renderPage(i), `numb${i === currentPage ? ' active' : ''}`);
+  }
+
+  // Last page
+  if (currentPage < totalPages - showAfter) {
+    mkLi('...', null, 'dots');
+    mkLi(totalPages, () => renderPage(totalPages), 'numb');
+  }
+
+  // Next button
+  mkLi('Next', () => renderPage(currentPage + 1), currentPage === totalPages ? 'btn disabled' : 'btn');
+}
 
   function buildCardHTML(card, covers = {}) {
     const {

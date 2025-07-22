@@ -70,7 +70,7 @@
 <form class="card-form" action="/edition/<%= locals.edition_olid %>" method="get">
   <div class="card-container" data-edition-olid="<%= locals.edition_olid %>" data-work-olid="<%= locals.work_olid %>" data-title="<%= displayTitle %>" data-publish-date="<%= locals.publish_date %>" data-description="<%= encodedDescription %>" data-cover-url="<%= locals.cover_url || '' %>" data-status-id="<%= locals.status_id %>" data-userreview="<%= encodedUserReview %>" data-totalScore="<%= encodedWorkScore %>" data-authors="<%= encodedAuthors %>" data-languages="<%= locals.languages %>" tabindex="0">
 
-    <div class="card-content-container flex ">
+    <div class="card-content-container flex">
       <div class="book-cover-status flex vertical align-center justify-center">
         <div class="book-cover-container flex justify-center align-center">
           <% if (locals.cover_url) { %>

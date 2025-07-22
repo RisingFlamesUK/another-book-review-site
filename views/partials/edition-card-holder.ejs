@@ -1,4 +1,5 @@
 <!-- views/partials/edition-card-holder.ejs -->
+ <% console.log(locals); %>
 <div id="card-holder-container" class="followon-container content-background">
   <div class="card-holder-header flex align-center justify-between">
 
@@ -13,22 +14,23 @@
 
     <div class="flex filler">
     </div>
+    <div id="filter-search" class="flex">
+      <div class="filter-controls flex vertical">
+        <label for="statusFilter">Filter by Status:</label>
+        <select id="statusFilter">
+          <option value="all">All</option>
+          <% if (locals.cachedStatuses && Array.isArray(locals.cachedStatuses)) { %>
+          <% locals.cachedStatuses.forEach(status => { %>
+          <option value="<%= status.id %>"><%= status.status %></option>
+          <% }) %>
+          <% } %>
+        </select>
+      </div>
 
-    <div class="filter-controls flex vertical">
-      <label for="statusFilter">Filter by Status:</label>
-      <select id="statusFilter">
-        <option value="all">All</option>
-        <% if (locals.cachedStatuses && Array.isArray(locals.cachedStatuses)) { %>
-        <% locals.cachedStatuses.forEach(status => { %>
-        <option value="<%= status.id %>"><%= status.status %></option>
-        <% }) %>
-        <% } %>
-      </select>
-    </div>
-
-    <div class="search-controls flex vertical ">
-      <label for="bookSearch">Search My Books:</label>
-      <input type="text" id="bookSearch" placeholder="Title or Author...">
+      <div class="search-controls flex vertical ">
+        <label for="bookSearch">Search My Books:</label>
+        <input type="text" id="bookSearch" placeholder="Title or Author...">
+      </div>
     </div>
   </div>
 

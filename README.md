@@ -12,10 +12,9 @@ I use a combination of APIs provided by Open Library:
 https://openlibrary.org/developers/api
 
 TO DO:
---> add search funcitionality to browse (need a search results page)
---> stretch goal: add advanced search to allow additional options in search
+--> add user book status selection to editions (Unread, Unread - Owned, Unread - Borrowed, Reading, Want)
 --> stretch goal: surface multi-language support
---> stretch goal: add user profile management (inc picture)
+--> stretch goal: add user profile management (inc picture & default language)
 --> stretch goal: update the edition page to allow user notes to be added 
 
 ---------

@@ -65,7 +65,7 @@
     // Publisher(s)
     let displayPublisher = '<i>Not Found</i>';
     if(locals.edition.publishers) {
-      displayPublisher = edition.publishers + " " + edition.publish_date;
+      displayPublisher = edition.publishers.join(", ") + " " + edition.publish_date;
     } else if (edition.publish_date) {
       displayPublisher = '<i>Publisher Not Found.</i> Published: ' + edition.publish_date;
     }   
@@ -83,22 +83,20 @@
     <div id="edition-title" class="flex vertical align-center width-100">
       <h2><%= displayTitle %></h2>
     </div>
+    <div id="work-authors-container" class="flex justify-center">
+      <p id="work-authors"> <%= displayAuthors %></p>
+    </div>
 
-    <div class="flex width-100 align-center justify-between padding-bottom10">
-      <div class="flex-1">
+    <div class="flex width-100 align-center padding-bottom10">
+      <div class="back-button-container">
         <div class="button left-margin-20">
           <div class="page-navigation-button">
-            <a href="#" id="backButton">
+            <a href="javascript:void(0)" id="back-button">
               <i class="bi bi-chevron-double-left"></i>
               <i class="button-text">Back</i>
             </a>
           </div>
         </div>
-      </div>
-      <div class="flex-1 flex justify-center">
-        <p id="work-authors"> <%= displayAuthors %></p>
-      </div>
-      <div class="flex-1">
       </div>
     </div>
 
@@ -123,7 +121,7 @@
         <% if (locals.user && locals.edition.isInCollection) { %>
         <div id="edition-user-score-section">
           <div class="user-rating-wrapper flex align-center" data-edition-olid="<%= edition.edition_olid %>" data-work-olid="<%= edition.work_olid %>">
-              <p>My Score: &nbsp;</p><%- processUserScore(userScore) %>
+            <p>My Score: &nbsp;</p><%- processUserScore(userScore) %>
           </div>
         </div>
 
@@ -134,7 +132,7 @@
 
       <div id="edition-text" class="flex vertical align-center flex-remainder">
         <div class="flex width-100 justify-between">
-          <div></div>
+          <div id="edition-header-spacer"></div>
           <h3 id="edition-header">Edition Info</h3>
           <div class="edition-collection-status-container flex align-start justify-end">
             <% if (user && locals.edition.isInCollection) { %>
@@ -201,15 +199,15 @@
                     username: locals.user?.username,
                     userImage: locals.user?.image
                   }) %>
-                
+
               </div>
               <% }) %>
-                <% } else { %>
-                <div class="flex vertical justify-center align-center flex-remainder">
-                  <div class="no-results-message">No reviews yet</div>
-                </div>
+              <% } else { %>
+              <div class="flex vertical justify-center align-center flex-remainder">
+                <div class="no-results-message">No reviews yet</div>
+              </div>
 
-                <% } %>
+              <% } %>
             </section>
 
           </div>

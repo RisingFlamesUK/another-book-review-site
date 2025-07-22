@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const reviewActionContainer = document.getElementById('review-action-container');
     const collectionStatusContainer = document.querySelector('.edition-collection-status-container');
     const userReviewFormWrapper = document.getElementById('user-review-form');
-    const backButton = document.getElementById('backButton');
+    const backButton = document.getElementById('back-button');
     const section = document.getElementById('user-review-section');
 
     function getElements() {

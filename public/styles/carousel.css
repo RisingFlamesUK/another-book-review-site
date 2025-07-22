@@ -1,16 +1,20 @@
 .book-title-hover-box {
     position: absolute;
-    top: 0; 
+    top: 0;
     left: 0;
     right: 0;
-    bottom: 0; 
+    bottom: 0;
     padding: 5px;
     background-color: rgba(0, 0, 0, 0.637);
-    opacity: 0; /* Initially hidden */
-    visibility: hidden; /* Also hide from screen readers when not visible */
-    transition: opacity 0.3s ease-out, visibility 0.3s ease-out; /* Smooth fade effect */
+    opacity: 0;
+    /* Initially hidden */
+    visibility: hidden;
+    /* Also hide from screen readers when not visible */
+    transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+    /* Smooth fade effect */
     z-index: 15;
-    border-radius: inherit; /* Inherit border-radius from .work-card if it has any */
+    border-radius: inherit;
+    /* Inherit border-radius from .work-card if it has any */
 }
 
 .book-title-hover-text {
@@ -21,10 +25,14 @@
     font-weight: bold;
     color: white;
     text-align: center;
-    box-sizing: border-box; /* Include padding in the element's total size */
-    white-space: normal; /* Allow text to wrap if it's too long */
-    text-overflow: ellipsis; /* Add "..." if text is clipped after wrapping (requires fixed height) */
-    overflow: hidden; /* Hide any text that still overflows after wrapping */
+    box-sizing: border-box;
+    /* Include padding in the element's total size */
+    white-space: normal;
+    /* Allow text to wrap if it's too long */
+    text-overflow: ellipsis;
+    /* Add "..." if text is clipped after wrapping (requires fixed height) */
+    overflow: hidden;
+    /* Hide any text that still overflows after wrapping */
 }
 
 .work-card:hover .book-title-hover-box {
@@ -36,9 +44,9 @@
     max-width: 1400px;
     justify-self: center;
 }
- 
+
 .carousel-holder {
- padding: 20px 30px;
+    padding: 20px 30px;
 }
 
 .carousel-title {
@@ -88,14 +96,14 @@
     font-size: small;
     width: fit-content;
     border-radius: 5px;
-    padding: 1px 2px; 
+    padding: 1px 2px;
 }
 
 .missing-cover-title {
     background-color: white;
     color: black;
     width: fit-content;
-    padding: 1px 2px; 
+    padding: 1px 2px;
     border-radius: 5px;
 
 }
@@ -106,11 +114,11 @@
 }
 
 #fiction-title {
-    background: linear-gradient(90deg,rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+    background: linear-gradient(90deg, rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
 }
 
 #non-fiction-title {
-    background: linear-gradient(308deg,rgba(2, 0, 36, 1) 0%, rgba(9, 9, 121, 1) 35%, rgba(0, 212, 255, 1) 100%);
+    background: linear-gradient(308deg, rgba(2, 0, 36, 1) 0%, rgba(9, 9, 121, 1) 35%, rgba(0, 212, 255, 1) 100%);
     color: white;
 }
 
@@ -166,7 +174,8 @@
         top: 0;
         left: calc(100% - var(--carousel-item-gap));
         width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
-        height: calc(var(--carousel-item-height)); /* - 2 * var(--carousel-item-padding) */
+        height: calc(var(--carousel-item-height));
+        /* - 2 * var(--carousel-item-padding) */
         max-height: 300px;
         display: grid;
         grid-template-rows: calc(var(--carousel-item-height));
@@ -250,7 +259,8 @@
 
     .carousel img {
         width: calc(var(--carousel-item-width) - 2 * var(--carousel-item-padding));
-        height: calc(var(--carousel-item-height));  /* - 2 * var(--carousel-item-padding) */
+        height: calc(var(--carousel-item-height));
+        /* - 2 * var(--carousel-item-padding) */
         object-fit: contain;
         background-color: white;
 
@@ -262,4 +272,24 @@
             transform: translateX(calc((var(--items) * (var(--carousel-item-width) + var(--carousel-item-gap))) * -1));
         }
     }
+}
+
+@media (max-width: 480px) {
+
+    .carousel {
+        --carousel-item-width: 120px;
+        --carousel-item-height: 150px;
+    }
+
+
+    .book-title-hover-box {
+        padding: 3px;
+        /* Reduced from 5px */
+    }
+
+    .book-title-hover-text {
+        padding: 8px;
+        font-size: 0.8em;
+    }
+
 }

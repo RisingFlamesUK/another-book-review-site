@@ -275,8 +275,6 @@ export async function downloadData(edition_olid = null, work_olid = null, author
         // Filter out nulls from failed fetches; keep cached placeholders for now
         const fetchedAuthorDetails = (await Promise.all(authorFetchPromises)).filter(detail => detail);
 
-        // --- BATCH IMAGE DOWNLOADS ---
-        console.log(`     Initiating batch image downloads...`);
         // Get the list of remote image URLs for editions and authors
         const editionCoverRemoteUrls = Array.from(editionCoverUrlsToDownload.values());
         const authorPicRemoteUrls = Array.from(authorPicUrlsToDownload.values());
@@ -286,7 +284,6 @@ export async function downloadData(edition_olid = null, work_olid = null, author
             file.getOlImage("edition", editionCoverRemoteUrls, "M"),
             file.getOlImage("author", authorPicRemoteUrls)
         ]);
-        console.log(`       ... Batch image downloads complete.`);
 
         // Convert results to maps for easy lookup by original remote URL
         const editionCoverLocalPathsMap = new Map();

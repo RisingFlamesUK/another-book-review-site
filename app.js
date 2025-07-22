@@ -16,9 +16,7 @@ import {
     cachedTrending,
     cachedBrowseSubjects,
     getUserBooks,
-    putUserScore,
     getWorksScore,
-    getUserReviews,
     putUserReview,
     patchUserReview,
     logCurrentCache,
@@ -625,7 +623,7 @@ app.post('/search/covers', async (req, res) => {
 //-------------------------------------
 //     **** Data handling ****
 //-------------------------------------
-// TESTS fo OL API interactions
+// TESTS fo OL API interactions (using something like Postman)
 app.get('/OLsearch', validateQuery(['type', 'criteria', 'page', 'limit', 'language']), async (req, res) => {
     const criteria = req.query.criteria;
     const type = req.query.type;
@@ -653,16 +651,23 @@ app.get('/OLsearch', validateQuery(['type', 'criteria', 'page', 'limit', 'langua
     }
 });
 
+// This is a route to print all caches to the console log
+app.get('/cache', (req, res) => {
+    console.log("test")
+    logCurrentCache()
+    return res.json(200)
+});
+
 //-------------------------------------
 // 1. POST a user selected edition
 //-------------------------------------
 app.post('/add-edition', validateBody(['edition_olid']), async (req, res) => {
-    // 2. Extract edition_olid from req.body
+    // 1. Extract edition_olid from req.body
     const {
         edition_olid
     } = req.body;
 
-    // 1. Authentication and Authorization Check
+    // 2. Authentication and Authorization Check
     if (!req.session.isLoggedIn || !req.session.user?.id) {
         console.error(`Not Authorised to Add Books: User not logged in or user ID missing`);
         return res.status(401).json({
@@ -676,17 +681,17 @@ app.post('/add-edition', validateBody(['edition_olid']), async (req, res) => {
     try {
 
 
-        // 2. Call the backend function to add the edition
+        // 3. Call the backend function to add the edition
         // The `true` argument means force a refresh/download if it already exists.
         const response = await be.selectedEdition(user_id, edition_olid, true);
 
-        // 3. Respond with success message
+        // 4. Respond with success message
         console.log(`Successfully processed edition ${edition_olid} for user ${user_id}. Message: ${response}`);
         return res.status(200).json({
             message: response
         });
     } catch (error) {
-        // 4. Error Handling
+        // 5. Error Handling
         // validateOlid function throws errors that are caught here.
         console.error(`Error in /add-edition route for user ${user_id}, edition ${edition_olid}:`, error.message);
 
@@ -790,6 +795,8 @@ app.post('/set-user-review', validateBody(['edition_olid', 'review', 'review_tit
 
 // This middleware will be executed if no other route has matched the request.
 app.use((req, res, next) => {
+    console.log('user requested an invalid page');
+    console.log(req);
     res.status(404).send("Sorry, the page you're looking for doesn't exist!");
 });
 
@@ -797,7 +804,6 @@ app.listen(port, () => {
     console.log("------------------------------------------------------");
     console.log(`Server running on port ${port}`);
     console.log("------------------------------------------------------");
-    // logCurrentCache();
     console.log("");
 
 });

@@ -4,7 +4,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>
     Bookworm Reviews
   </title>
@@ -41,9 +41,9 @@
             <img id="site-logo" class="m-0" src="/assets/images/logos/BookwormReviewsLogo.jpg" alt="Bookwork Reviews Logo">
           </a>
         </div>
-        <div>
+        <div id="logo-text">
           <a class="no-underline" href="/">
-            <h1 class="m-0">OOKWORM REVIEWS</h1>
+            <h1 class="m-0">OOKWORM<br>REVIEWS</h1>
           </a>
         </div>
       </div>
@@ -63,10 +63,8 @@
             </ul>
           </div>
           <% } else { %>
-          <!-- <a href="/login" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a> -->
-          <!-- <p class="m-0"><a href="/login" class="m-0">Login / Sign-up</a></p> -->
-          <a href="#" onclick="replaceHistoryAndLogin(event)" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a>
-          <a href="#" onclick="replaceHistoryAndLogin(event)">Login / Sign-up</a>
+          <a href="/login" class="m-0"><i class="bi bi-person-circle header-not-logged-in button"></i></a>
+          <p class="m-0"><a href="/login" class="m-0">Login / Sign-up</a></p>
           <% } %>
         </div>
       </div>
@@ -75,10 +73,3 @@
   </header>
   <main class="container px-0 width-100">
     <div class="content-container">
-      <script>
-        function replaceHistoryAndLogin(event) {
-          event.preventDefault(); // Prevent default link behavior
-          // Replace the current page in history with the login page
-          window.location.replace('/login');
-        }
-      </script>
