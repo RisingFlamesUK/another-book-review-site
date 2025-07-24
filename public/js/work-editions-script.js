@@ -1,9 +1,5 @@
 // public/js/work-editions-script.js
-
-/* global allWorkEditions, userLoggedIn */ // Provided by EJS
-
 document.addEventListener('DOMContentLoaded', () => {
-  const backButton = document.getElementById('back-button');
   const editionCardsContainer = document.querySelector('.edition-card-holder');
   const paginationList = document.getElementById('pagination-list');
   const languageFilter = document.getElementById('languageFilter');
@@ -17,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const allWorkEditionsInitial = allWorkEditions;
   let currentFilteredAndSortedEditions = [...allWorkEditionsInitial];
 
+  // Language selector default logic
   (() => {
     const hasCollection = allWorkEditionsInitial.some(e => e.isInCollection);
     const collectionLangs = new Set();
@@ -196,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
       flex.innerHTML = `
         <p><i>ISBN: ${edition.isbn || 'Not Found'}</i></p>
         <p><i>${(edition.languages || ['Language Not Found']).join(', ')}</i></p>
-      `;
+`;
       outer.appendChild(flex);
 
       card.appendChild(outer);
@@ -228,16 +225,25 @@ document.addEventListener('DOMContentLoaded', () => {
           const img = c.querySelector('img');
           if (!img) return;
 
+          // Find matching key by checking if it ends in `/${id}-S.jpg`
           const matchedKey = Object.keys(map).find(k => k.endsWith(`/${id}-S.jpg`));
           if (matchedKey) {
             img.src = map[matchedKey];
             img.classList.remove('no-cover');
           } else {
-            const overlay = document.createElement('div');
-            overlay.className = 'missing-cover-overlay-s flex vertical align-center';
-            overlay.innerHTML = '<p class="missing-cover-text-s"><i>(Cover unavailable)</i></p>';
-            c.appendChild(overlay);
-            c.classList.add('missing-cover-container');
+            const container = img.closest('.edition-image-container');
+            if (container && !container.querySelector('.missing-cover-overlay-s')) {
+              const overlay = document.createElement('div');
+              overlay.className = 'missing-cover-overlay-s flex vertical align-center';
+
+              const text = document.createElement('p');
+              text.className = 'missing-cover-text-s';
+              text.innerHTML = '<i>(Cover unavailable)</i>';
+              overlay.appendChild(text);
+
+              container.appendChild(overlay);
+              container.classList.add('missing-cover-container');
+            }
           }
         });
       })
@@ -266,12 +272,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       response = await fetch('/add-edition', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          edition_olid: editionOlid
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edition_olid: editionOlid })
       });
 
       const data = await response.json();
@@ -294,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   }
-
+  
   function renderPaginationControls(totalItems) {
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
     paginationList.innerHTML = '';
@@ -315,11 +317,6 @@ document.addEventListener('DOMContentLoaded', () => {
       paginationList.appendChild(li);
     }
   }
-
-  backButton?.addEventListener('click', e => {
-    e.preventDefault();
-    window.history.back();
-  });
 
   languageFilter.addEventListener('change', applyFiltersSearchSort);
   editionSearchInput.addEventListener('input', applyFiltersSearchSort);

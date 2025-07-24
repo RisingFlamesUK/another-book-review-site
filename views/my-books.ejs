@@ -1,7 +1,11 @@
 <!-- views/my-books.ejs -->
 <%- include("partials/header.ejs") %>
 
-
+<div id="my-books-data"
+     data-all-user-books="<%= JSON.stringify(cards) %>"
+     data-all-user-statuses='<%= JSON.stringify(cachedStatuses) %>'
+     style="display: none;">
+</div>
 
 <div class="flex vertical content-background width-100">
   <div class="my-books flex justify-center width-100">
@@ -30,8 +34,9 @@
 
 <script>
   // Pass cards and cachedStatuses to the client side js
-  const allUserBooks = <%- JSON.stringify(cards); %>
-  const allUserStatuses = <%- JSON.stringify(cachedStatuses); %>
+  const workDataElement = document.getElementById('my-books-data');
+  const allUserBooks = JSON.parse(workDataElement.data-all-user-books);
+  const allUserStatuses = JSON.parse(workDataElement.data-all-user-statuses);
 </script>
 <script src="/js/my-books-script.js"></script>
 <script src="/js/user-stars.js"></script>

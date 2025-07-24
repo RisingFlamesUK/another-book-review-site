@@ -60,6 +60,12 @@
     const sortedUniqueLanguages = Array.from(allEditionLanguages).sort();
 %>
 
+<div id="work-data"
+     data-user-logged-in="<%= JSON.stringify(!!locals.user) %>"
+     data-work-editions='<%= JSON.stringify(card.workEditions || []) %>'
+     style="display: none;">
+</div>
+
 <div id="work-content-container" class="flex justify-center">
   <div id="work-content" class="flex vertical content-background width-100">
     <div id="work-title" class="flex vertical align-center width-100">
@@ -70,7 +76,7 @@
       <div id="work-back-button-container" class="flex-1">
         <div id="work-back-button" class="button left-margin-20">
           <div class="page-navigation-button">
-            <a href="javascript:void(0)" id="back-button">
+            <a href="javascript:history.back()" id="back-button">
               <i class="bi bi-chevron-double-left"></i>
               <i class="button-text">Back</i>
             </a>
@@ -221,7 +227,8 @@
 <%- include("partials/footer.ejs") %>
 <script>
   // Pass the user login status and all work editions data to the frontend script
-  const userLoggedIn = <%- JSON.stringify(!!locals.user) %>;
-  const allWorkEditions = <%- JSON.stringify(card.workEditions || []) %>;
+  const workDataElement = document.getElementById('work-data');
+  const userLoggedIn = JSON.parse(workDataElement.dataset.userLoggedIn);
+  const allWorkEditions = JSON.parse(workDataElement.dataset.workEditions);
 </script>
 <script src="/js/work-editions-script.js"></script>

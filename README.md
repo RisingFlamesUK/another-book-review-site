@@ -128,5 +128,6 @@ Include a `Readme.md` file that explains how to start your server, what commands
 
 ## In this Commited Change
 
-- improved work.ejs / work-edition-script.js / backlend-handler.js /app.js to ensure only images that are required to render are downloaded. (improved page loading times)
-- removed browser history manipulation in login-signup.js
+- fix in collection badge / add to collection button on work-edition-script (for works.ejs)
+- cleaner way to pass data to client side js (for works.ejs / my-books.ejs)
+- cleanup unused files
