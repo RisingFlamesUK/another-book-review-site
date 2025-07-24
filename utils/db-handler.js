@@ -696,44 +696,44 @@ export async function getUserReviews(user_id, edition_olid = undefined) {
  * @throws {Error} If a failure occurs during the database operation.
  */
 export async function getWorksScore(work_olid_or_olids, client = database) {
-  try {
-    const workOlids = typeof work_olid_or_olids === 'string'
-      ? [work_olid_or_olids]
-      : Array.isArray(work_olid_or_olids)
-        ? work_olid_or_olids
-        : [];
+    try {
+        const workOlids = typeof work_olid_or_olids === 'string' ?
+            [work_olid_or_olids] :
+            Array.isArray(work_olid_or_olids) ?
+            work_olid_or_olids :
+            [];
 
-    if (workOlids.length === 0) {
-      return Array.isArray(work_olid_or_olids) ? [] : null;
-    }
+        if (workOlids.length === 0) {
+            return Array.isArray(work_olid_or_olids) ? [] : null;
+        }
 
-    const result = await client.query(`
+        const result = await client.query(`
       SELECT work_olid, score AS totalscore, review_count AS reviewcount
       FROM works_scores
       WHERE work_olid = ANY($1)
     `, [workOlids]);
 
-    function wrapRow(r) {
-      const avg = r.reviewcount > 0 ? r.totalscore / r.reviewcount : 0;
-      return {
-        work_olid: r.work_olid,
-        totalScore: r.totalscore,
-        reviewCount: r.reviewcount,
-        averageScore: avg
-      };
-    }
+        function wrapRow(r) {
+            const avg = r.reviewcount > 0 ? r.totalscore / r.reviewcount : 0;
+            return {
+                work_olid: r.work_olid,
+                totalScore: r.totalscore,
+                reviewCount: r.reviewcount,
+                averageScore: avg
+            };
+        }
 
-    if (typeof work_olid_or_olids === 'string') {
-      if (result.rows.length === 0) return null;
-      return wrapRow(result.rows[0]);
-    } else {
-      return result.rows.map(wrapRow);
-    }
+        if (typeof work_olid_or_olids === 'string') {
+            if (result.rows.length === 0) return null;
+            return wrapRow(result.rows[0]);
+        } else {
+            return result.rows.map(wrapRow);
+        }
 
-  } catch (err) {
-    console.error(`DB error getting works_score for ${work_olid_or_olids}:`, err);
-    throw err;
-  }
+    } catch (err) {
+        console.error(`DB error getting works_score for ${work_olid_or_olids}:`, err);
+        throw err;
+    }
 }
 
 /**
@@ -1008,27 +1008,27 @@ export async function putUserReview(user_id, edition_olid, review_title, review,
 }
 
 export async function patchUserReview(user_id, edition_olid, updates = {}) {
-  let client;
-  try {
-    client = await database.connect();
-    await client.query('BEGIN');
+    let client;
+    try {
+        client = await database.connect();
+        await client.query('BEGIN');
 
-    const user_book_id = await getUserBookId(user_id, edition_olid, client);
+        const user_book_id = await getUserBookId(user_id, edition_olid, client);
 
-    // 1. Fetch old score for calculating scoreChange
-    const oldRow = await client.query(`
+        // 1. Fetch old score for calculating scoreChange
+        const oldRow = await client.query(`
       SELECT score FROM book_review
       WHERE user_book_id = $1
     `, [user_book_id]);
 
-    const oldScore = oldRow.rows.length > 0 ? oldRow.rows[0].score : null;
+        const oldScore = oldRow.rows.length > 0 ? oldRow.rows[0].score : null;
 
-    // 2. Build dynamic upsert values
-    const review_title = updates.review_title ?? null;
-    const review = updates.review ?? null;
-    const score = updates.score ?? null;
+        // 2. Build dynamic upsert values
+        const review_title = updates.review_title ?? null;
+        const review = updates.review ?? null;
+        const score = updates.score ?? null;
 
-    const reviewResult = await client.query(`
+        const reviewResult = await client.query(`
       INSERT INTO book_review (user_book_id, review_title, review, score)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (user_book_id) WHERE user_book_id IS NOT NULL
@@ -1040,51 +1040,74 @@ export async function patchUserReview(user_id, edition_olid, updates = {}) {
       RETURNING *;
     `, [user_book_id, review_title, review, score]);
 
-    // 3. Get work_olid for aggregation
-    const ub = await client.query(`
+        // 3. Get work_olid for aggregation
+        const ub = await client.query(`
       SELECT be.work_olid
       FROM book_editions AS be
       JOIN users_books AS ub ON ub.edition_olid = be.edition_olid
       WHERE ub.id = $1
     `, [user_book_id]);
 
-    if (!ub.rows.length || !ub.rows[0].work_olid) {
-      throw new Error(`Missing work_olid for user_book_id: ${user_book_id}`);
+        if (!ub.rows.length || !ub.rows[0].work_olid) {
+            throw new Error(`Missing work_olid for user_book_id: ${user_book_id}`);
+        }
+
+        const work_olid = ub.rows[0].work_olid;
+
+        // 4. Compute score change
+        const newScore = reviewResult.rows[0].score;
+        const scoreChange = (newScore ?? 0) - (oldScore ?? 0);
+        const isNewReview = oldScore === null;
+
+        // 5. Update work score
+        const {
+            newWorkScore,
+            newReviewCount
+        } = await updateWorkScore({
+            client,
+            work_olid,
+            scoreChange,
+            isNewReview
+        });
+
+        await client.query('COMMIT');
+
+        return {
+            review: reviewResult.rows[0],
+            workScore: newWorkScore,
+            reviewCount: newReviewCount
+        };
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        if (client) client.release();
     }
-
-    const work_olid = ub.rows[0].work_olid;
-
-    // 4. Compute score change
-    const newScore = reviewResult.rows[0].score;
-    const scoreChange = (newScore ?? 0) - (oldScore ?? 0);
-    const isNewReview = oldScore === null;
-
-    // 5. Update work score
-    const {
-      newWorkScore,
-      newReviewCount
-    } = await updateWorkScore({
-      client,
-      work_olid,
-      scoreChange,
-      isNewReview
-    });
-
-    await client.query('COMMIT');
-
-    return {
-      review: reviewResult.rows[0],
-      workScore: newWorkScore,
-      reviewCount: newReviewCount
-    };
-  } catch (err) {
-    if (client) await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    if (client) client.release();
-  }
 }
 
+/**
+ * Update a user's status for a specific edition.
+ * @param {string} userId
+ * @param {string} editionOlid
+ * @param {number} statusId
+ * @returns {Promise<boolean>} true if success
+ */
+export async function putUserEditionStatus(userId, editionOlid, statusId) {
+    const query = `
+    UPDATE users_books
+    SET status_id = $3,
+        last_modified = CURRENT_TIMESTAMP
+    WHERE user_id = $1 AND edition_olid = $2;
+  `;
+
+    try {
+        const result = await database.query(query, [userId, editionOlid, statusId]);
+        return result.rowCount > 0; // true if update happened, false if not found
+    } catch (err) {
+        console.error('Error in putUserEditionStatus:', err);
+        return false;
+    }
+}
 
 /**
  * Adds a new edition to a user's collection in the database.

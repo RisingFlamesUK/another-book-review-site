@@ -1,10 +1,7 @@
 <!-- views/my-books.ejs -->
 <%- include("partials/header.ejs") %>
 
-<div id="my-books-data"
-     data-all-user-books="<%= JSON.stringify(cards) %>"
-     data-all-user-statuses='<%= JSON.stringify(cachedStatuses) %>'
-     style="display: none;">
+<div id="my-books-data" data-all-user-books="<%= JSON.stringify(cards) %>" data-all-user-statuses='<%= JSON.stringify(cachedStatuses) %>' style="display: none;">
 </div>
 
 <div class="flex vertical content-background width-100">
@@ -16,13 +13,13 @@
   <div class="my-books flex justify-right width-100">
     <div class="flex justify-right padding-x10">
       <p id="itemsPerPage"><select id="itemsPerPageDropdown">
-        <option value="6">6</option>
-        <option value="10" selected>10</option>
-        <option value="20">20</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-      </select>
-       &nbsp;per page</p>
+          <option value="6">6</option>
+          <option value="10" selected>10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        &nbsp;per page</p>
     </div>
   </div>
 </div>
@@ -35,8 +32,8 @@
 <script>
   // Pass cards and cachedStatuses to the client side js
   const workDataElement = document.getElementById('my-books-data');
-  const allUserBooks = JSON.parse(workDataElement.data-all-user-books);
-  const allUserStatuses = JSON.parse(workDataElement.data-all-user-statuses);
+  const allUserBooks = JSON.parse(workDataElement.dataset.allUserBooks);
+  const allUserStatuses = JSON.parse(workDataElement.dataset.allUserStatuses);
 </script>
 <script src="/js/my-books-script.js"></script>
 <script src="/js/user-stars.js"></script>

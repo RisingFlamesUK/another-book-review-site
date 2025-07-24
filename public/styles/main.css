@@ -414,10 +414,6 @@ footer {
     padding: 5px 20px;
 }
 
-#statusFilter:hover {
-    cursor: pointer;
-}
-
 .filter-controls {
     margin: 0 0.9vw;
 }
@@ -525,6 +521,18 @@ footer {
     position: relative;
 }
 
+.book-cover-container .missing-cover-container .missing-cover-overlay-M {
+    position: absolute;
+    font-size: small;
+    z-index: 10;
+    top: 20px;
+    left: 5%;
+    width: 90%;
+    max-height: 100%;
+    text-align: center;
+    overflow-y: auto;
+}
+
 .missing-cover-container>img {
     object-fit: contain;
 }
@@ -537,15 +545,64 @@ footer {
     background-color: rgb(70, 45, 14);
 }
 
-.book-status {
-    height: 50px;
+.select-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
 }
 
-.book-status p {
-    background-color: var(--highlight-color);
-    color: white;
-    padding: 4px;
-    border-radius: 5px;
+.select-wrapper::after {
+  content: "▼";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--highlight-color);
+  pointer-events: none;
+}
+.book-status {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.status-select {
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  border: 1px solid var(--highlight-color);
+  border-radius: 6px;
+  background-color: #f9f9f9;
+  color: var(--highlight-color);
+  appearance: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+.status-select:focus,
+.status-select:hover {
+  background-color: #f1f1f1de;
+  color: black;
+  outline: none;
+   border-color: var(--accent-color, #6c63ff); 
+   box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.2);
+}
+
+.status-unread {
+  background-color: #fff6e6;
+  color: #b97300;
+  border-color: #f0b93d;
+}
+
+.status-reading {
+  background-color: #e6f4ff;
+  color: #0077b6;
+  border-color: #57a2d8;
+}
+
+.status-completed {
+  background-color: #e6ffe6;
+  color: #2e7d32;
+  border-color: #81c784;
 }
 
 .bi-star-fill {
@@ -815,17 +872,22 @@ footer {
     color: var(--hover-contrast-color);
 }
 
-.missing-cover-overlay-M {
+.left-column .missing-cover-container .missing-cover-overlay-M,
+.edition-cover-container .missing-cover-container .missing-cover-overlay-M {
     position: absolute;
+    font-size: medium;
     z-index: 10;
     top: 40px;
-    left: 25%;
-    width: 50%;
+    left: 15%;
+    width: 70%;
+    max-height: 100%;
     text-align: center;
+    overflow-y: auto;
 }
 
 .missing-cover-overlay-s {
     position: absolute;
+    font-size: small;
     z-index: 10;
     top: 5px;
     left: 8px;
@@ -866,6 +928,11 @@ footer {
 .add-review-button {
     position: relative;
     top: -10px;
+}
+
+.edit-review-button:hover,
+.add-review-button:hover {
+    color: var(--hover-color);
 }
 
 .edition-reviews-Header {
@@ -1145,6 +1212,22 @@ button[type="submit"] {
 
 button[type="submit"]:hover {
     background-color: #0056b3;
+}
+
+button[type="submit"][disabled] {
+    background-color: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+    opacity: 0.7;
+    box-shadow: none;
+    pointer-events: none;
+}
+
+/* Override hover for disabled state */
+button[type="submit"][disabled]:hover {
+    background-color: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
 }
 
 .tab-content a {
@@ -1561,6 +1644,7 @@ button[type="submit"]:hover {
 
     #edition-details {
         flex-direction: column;
+        align-items: center;
     }
 
     #review-form-score-container label {

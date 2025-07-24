@@ -29,7 +29,8 @@ const renderUserStarsHtml = (scoreToDisplay) => {
 // Helper: full HTML with prefix/suffix
 const renderCompleteUserStarsHtml = (score) => {
   const starsHtml = renderUserStarsHtml(score);
-  const prefix = score === 0 ? 'Review Now: ' : '';
+  // const prefix = score === 0 ? 'Score Now: ' : '';
+  const prefix = '';
   const suffix = score === 0 ? '<span class="star-suffix">(Not reviewed)</span>' : '';
   return `${prefix}${starsHtml}${suffix}`;
 };

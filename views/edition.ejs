@@ -125,7 +125,14 @@
           </div>
         </div>
 
-        <div id="user-status-dropdown">
+        <div class="book-status">
+          <div class="select-wrapper">
+            <select class="status-select" id="status-<%= locals.edition.edition_olid %>" data-edition-olid="<%= locals.edition.edition_olid %>">
+              <% cachedStatuses.forEach(s => { %>
+              <option value="<%= s.id %>" <%= s.id == locals.edition.status_id ? 'selected' : '' %>><%= s.status %></option>
+              <% }); %>
+            </select>
+          </div>
         </div>
         <% }; %>
       </div>
@@ -203,7 +210,7 @@
               </div>
               <% }) %>
               <% } else { %>
-              <div class="flex vertical justify-center align-center flex-remainder">
+              <div id="no-reviews-placeholder" class="flex vertical justify-center align-center flex-remainder">
                 <div class="no-results-message">No reviews yet</div>
               </div>
 

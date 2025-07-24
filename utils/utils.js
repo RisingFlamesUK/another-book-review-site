@@ -2,6 +2,7 @@
 import EmailValidation from 'emailvalid';
 import {
     cachedLanguages,
+    cachedStatuses,
     findUser,
 } from './db-handler.js';
 
@@ -523,8 +524,18 @@ export function validateInput(input) {
                     }
                 }
                 break;
+            case 'statusId':
+            case 'status_id': {
+                const validIds = cachedStatuses.map(s => s.id);
+                const id = Number(value);
 
-                // --- Fallback ---
+                if (!Number.isInteger(id) || !validIds.includes(id)) {
+                    errors.push(`${field} must be one of the following: ${validIds.join(', ')}`);
+                }
+                break;
+            }
+
+            // --- Fallback ---
             default:
                 if (!['returnTo', 'confirmPassword'].includes(field)) {
                     errors.push(`Unknown field: ${field}`);
@@ -533,8 +544,15 @@ export function validateInput(input) {
     }
 
     if (errors.length > 0) {
+        const safeInput = {
+            ...input
+        };
+        if ('password' in safeInput) safeInput.password = '***';
+        if ('confirmPassword' in safeInput) safeInput.confirmPassword = '***';
+        if ('email' in safeInput) safeInput.email = '***';
+
         console.warn('[Validation Error]', {
-            input,
+            input: safeInput,
             errors
         });
     }
@@ -644,36 +662,36 @@ export function sendHistoryReplacingRedirect(res, targetPath) {
 
 
 const NAME_OVERRIDES = {
-  "van gogh": "van Gogh",
-  "de la cruz": "de la Cruz",
-  "al khwarizmi": "al-Khwarizmi",
-  "da vinci": "da Vinci"
+    "van gogh": "van Gogh",
+    "de la cruz": "de la Cruz",
+    "al khwarizmi": "al-Khwarizmi",
+    "da vinci": "da Vinci"
 };
 
 export function toTitleCase(str) {
 
-//handles:
-// Dot-separated initials (e.g. "j.r.r.")
-// Ensures capital letters after punctuation
+    //handles:
+    // Dot-separated initials (e.g. "j.r.r.")
+    // Ensures capital letters after punctuation
 
-  if (!str || typeof str !== 'string') return str;
+    if (!str || typeof str !== 'string') return str;
 
-  const lower = str.toLowerCase();
-  if (NAME_OVERRIDES[lower]) return NAME_OVERRIDES[lower];
+    const lower = str.toLowerCase();
+    if (NAME_OVERRIDES[lower]) return NAME_OVERRIDES[lower];
 
-  return str
-    .split(' ')
-    .map(word => {
-      // Handle initials like j.r.r.
-      if (/^[a-z](\.[a-z])+\.?$/i.test(word)) {
-        return word.toUpperCase();
-      }
+    return str
+        .split(' ')
+        .map(word => {
+            // Handle initials like j.r.r.
+            if (/^[a-z](\.[a-z])+\.?$/i.test(word)) {
+                return word.toUpperCase();
+            }
 
-      // Capitalize after apostrophes or prefixes (e.g., O')
-      return word
-        .toLowerCase()
-        .replace(/^(o')([a-z])/i, (_, prefix, char) => prefix + char.toUpperCase()) // O'Connor
-        .replace(/^\w/, char => char.toUpperCase()); // General case
-    })
-    .join(' ');
+            // Capitalize after apostrophes or prefixes (e.g., O')
+            return word
+                .toLowerCase()
+                .replace(/^(o')([a-z])/i, (_, prefix, char) => prefix + char.toUpperCase()) // O'Connor
+                .replace(/^\w/, char => char.toUpperCase()); // General case
+        })
+        .join(' ');
 }

@@ -107,6 +107,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (paginationList) paginationList.classList.remove('invisible'); // Remove invisible from UL
   }
 
+  function applyStatusClass(select) {
+    // Remove existing status-* classes
+    select.classList.remove('status-unread', 'status-reading', 'status-completed');
+
+    const statusId = parseInt(select.value, 10);
+    if ([1, 2, 3].includes(statusId)) {
+      select.classList.add('status-unread');
+    } else if (statusId === 4) {
+      select.classList.add('status-reading');
+    } else if (statusId === 5) {
+      select.classList.add('status-completed');
+    }
+  }
+
   // Event listeners
   searchInput.addEventListener('input', applyFiltersAndSearch);
   statusFilter.addEventListener('change', applyFiltersAndSearch);
@@ -116,6 +130,52 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCurrentPage();
   });
 
+  // Attach change listeners to all status dropdowns
+  document.querySelectorAll('.status-select').forEach(select => {
+    applyStatusClass(select);
+
+    select.addEventListener('click', e => {
+      e.stopPropagation();
+    });
+    select.addEventListener('change', async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      applyStatusClass(event.target);
+
+      const editionOlid = select.dataset.editionOlid;
+      const newStatusId = parseInt(select.value, 10);
+
+      try {
+        const response = await fetch('/set-user-book-status', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            edition_olid: editionOlid,
+            status_id: newStatusId
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          alert(`Failed to update status: ${result.message}`);
+        } else {
+          const container = select.closest('.card-container');
+          event.target.blur(); // Removes focus from the element (allows css formatting for selected status to apply)
+          if (container) {
+            container.dataset.statusId = newStatusId.toString();
+            applyFiltersAndSearch(); // reapply filters in case this change affects visibility
+          }
+        }
+      } catch (err) {
+        console.error('Error updating status:', err);
+        alert('An error occurred while updating status.');
+      }
+    });
+  });
+
   allBookCardForms.forEach(form => {
     const cont = form.querySelector('.card-container');
     if (!cont) return;
@@ -123,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
       window.location.href = `/edition/${cont.dataset.editionOlid}`;
     });
     cont.addEventListener('keypress', ev => {
+      if (ev.target.tagName.toLowerCase() === 'select') return;
       if (ev.key === 'Enter') {
         ev.preventDefault();
         cont.click();

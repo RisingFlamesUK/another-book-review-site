@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const userReviewFormWrapper = document.getElementById('user-review-form');
     const backButton = document.getElementById('back-button');
     const section = document.getElementById('user-review-section');
+    const statusDropdown = document.querySelector('.status-select');
 
     function getElements() {
         return {
@@ -59,8 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
             hiddenInput.value = score;
         };
 
+        const updateButtonState = () => {
+            const submitBtn = document.getElementById('submitReviewButton');
+            if (submitBtn) {
+                submitBtn.disabled = selectedScore === 0;
+            }
+        };
+
         updateLabel(currentScore);
         updateHiddenInput(currentScore);
+        updateButtonState();
 
         starIcons.addEventListener('mouseover', (e) => {
             const star = e.target.closest('.user-star');
@@ -84,11 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStars(val);
             updateLabel(val);
             updateHiddenInput(val);
+            updateButtonState(); 
         });
     }
-
-
-
 
     function renderCollectionStatus() {
         if (!collectionStatusContainer || !isUserLoggedIn) return;
@@ -228,6 +235,19 @@ document.addEventListener('DOMContentLoaded', () => {
         renderReviewActionStatus();
     }
 
+    function applyStatusClass(selectElement) {
+        selectElement.classList.remove('status-unread', 'status-reading', 'status-completed');
+
+        const val = parseInt(selectElement.value, 10);
+        if ([1, 2, 3].includes(val)) {
+            selectElement.classList.add('status-unread');
+        } else if (val === 4) {
+            selectElement.classList.add('status-reading');
+        } else if (val === 5) {
+            selectElement.classList.add('status-completed');
+        }
+    }
+
     document.addEventListener('click', e => {
         const edit = e.target.closest('.edit-review-button');
         if (edit && isUserLoggedIn) {
@@ -309,6 +329,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 wrapper.innerHTML = html;
 
+                const noReviewsEl = document.getElementById('no-reviews-placeholder');
+                if (noReviewsEl) {
+                    noReviewsEl.classList.add('invisible');
+                }
+
                 const newStarsWrapper = wrapper.querySelector('.user-stars-container');
                 if (newStarsWrapper) {
                     window.initializeUserStars(newStarsWrapper);
@@ -317,6 +342,41 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             renderReviewActionStatus();
         }
+    }
+
+    if (statusDropdown) {
+        applyStatusClass(statusDropdown);
+
+        statusDropdown.addEventListener('click', e => e.stopPropagation());
+
+        statusDropdown.addEventListener('change', async (e) => {
+            const select = e.target;
+            const newStatusId = parseInt(select.value, 10);
+            const editionOlid = select.dataset.editionOlid;
+
+            try {
+                const resp = await fetch('/set-user-book-status', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        edition_olid: editionOlid,
+                        status_id: newStatusId
+                    })
+                });
+
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.message || 'Failed to update status');
+
+                applyStatusClass(select);
+                select.blur(); // Removes focus from the element (allows css formatting for selected status to apply)
+
+            } catch (err) {
+                console.error('Error updating status:', err);
+                alert('Failed to update book status. Please try again.');
+            }
+        });
     }
 
     backButton?.addEventListener('click', e => {

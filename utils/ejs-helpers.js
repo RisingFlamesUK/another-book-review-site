@@ -36,9 +36,10 @@ export function processUserScore(userScore = null, maxStars = 5, includeText = t
 
     if (userScore === null) {
         if (includeText) {
-        scorePrefix = '<p>Review Now: &nbsp;&nbsp;&nbsp;';
-        } else {
-            scorePrefix = '<p>';
+        // scorePrefix = '<p>Score Now: &nbsp;&nbsp;&nbsp;';
+        scorePrefix = '<p>';
+        // } else {
+        //     scorePrefix = '<p>';
         }
         scoreSuffix = '<span class="user-score-suffix not-reviewed"><i>&nbsp;(Not reviewed)</i></span></p>';
 

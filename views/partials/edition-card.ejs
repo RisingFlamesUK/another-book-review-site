@@ -3,6 +3,7 @@
     //*********************************//
     //format the parameters for display//
     //*********************************//
+    // console.log(`[DEBUG] locals passed to this edition-card (${locals?.edition_olid}):`, locals)
     // Title
     let displayTitle = toTitleCase(locals.title) ||"Unknown Title";
     
@@ -76,7 +77,7 @@
           <% if (locals.cover_url) { %>
           <img src="<%= cover_url %>" alt="<%= title %> Book Cover Image" class="book-cover">
           <% } else {%>
-            <div class="missing-cover-container flex align-center justify-center">
+          <div class="missing-cover-container flex align-center justify-center">
             <img src="/assets/images/book placeholder.webp" alt="<%= displayTitle %> Book Cover Image" class="book-cover">
 
             <div class="missing-cover-overlay-M flex vertical align-center">
@@ -88,7 +89,13 @@
         </div>
 
         <div class="book-status">
-          <p><i><%- displayStatus %></i></p>
+          <div class="select-wrapper">
+            <select class="status-select" id="status-<%= locals.edition_olid %>" data-edition-olid="<%= locals.edition_olid %>">
+              <% cachedStatuses.forEach(s => { %>
+              <option value="<%= s.id %>" <%= s.id == locals.status_id ? 'selected' : '' %>><%= s.status %></option>
+              <% }); %>
+            </select>
+          </div>
         </div>
       </div>
       <div class="book-details-container flex vertical flex-remainder">
@@ -104,7 +111,7 @@
           <p>My Score: &nbsp;</p><%- userRatingHtml %>
         </div>
         <div class="work-score-section book-score">
-          <p>Overall:   &nbsp;&nbsp;<%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><i> <%- workReviewCount %></i></span></p>
+          <p>Overall: &nbsp;&nbsp;<%- displayWorkStars %> <%- displayWorkScore %><span class="star-suffix"><i> <%- workReviewCount %></i></span></p>
         </div>
 
         <div class="book-description-text ">

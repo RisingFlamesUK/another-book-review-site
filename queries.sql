@@ -187,12 +187,11 @@ CREATE TABLE cached_subject_data (
 INSERT INTO
     statuses (status)
 VALUES
-    ('Unread'),
-    ('Unread - Owned'),
-    ('Unread - Borrowed'),
+    ('Unread (Want)'),
+    ('Unread (Owned)'),
+    ('Unread (Borrowed)'),
     ('Reading'),
     ('Completed'),
-    ('Want');
 
 -- Populate the subjects table --
 INSERT INTO

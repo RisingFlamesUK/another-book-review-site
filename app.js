@@ -20,6 +20,7 @@ import {
     putUserReview,
     patchUserReview,
     logCurrentCache,
+    putUserEditionStatus,
 } from './utils/db-handler.js';
 import generateSecret from "./utils/encryption-handler.js";
 import dotenv from 'dotenv';
@@ -816,6 +817,49 @@ app.post('/set-user-review', validateBody(['edition_olid', 'review', 'review_tit
         });
     }
 });
+//-------------------------------------
+// 4. PUT a user book status 
+//-------------------------------------
+app.put('/set-user-book-status', validateBody(['edition_olid', 'status_id']), async (req, res) => {
+    // Ensure user is logged in
+    if (!req.session.user || !req.session.user.id) {
+        return res.status(401).json({
+            success: false,
+            message: 'You must be logged in to edit/post a review.'
+        });
+    }
+
+    const {
+        edition_olid,
+        status_id,
+    } = req.body;
+    const user_id = req.session.user.id;
+
+    try {
+        const updated = await putUserEditionStatus(user_id, edition_olid, status_id);
+
+        if (!updated) {
+            return res.status(400).json({
+                success: false,
+                message: 'Edition not in your collection — cannot update status.'
+            });
+        }
+        
+        return res.json({
+            success: true,
+            message: 'status saved.',
+        });
+
+    } catch (error) {
+        console.error('Error in /set-user-score route:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An internal server error occurred.'
+        });
+    }
+});
+
+
 
 // This middleware will be executed if no other route has matched the request.
 app.use((req, res, next) => {
