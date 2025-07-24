@@ -1313,7 +1313,7 @@ button[type="submit"]:hover {
 /*   12. Media Queries  */
 /* -------------------------------- */
 
-@media (max-width:480px) {
+@media (max-width:961px) {
 
     /* smartphones, iPhone, portrait 480x320 phones */
     /*#####################

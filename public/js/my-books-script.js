@@ -83,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // MODIFIED: Do not overwrite innerHTML, instead append and manage the message element
   function showMessage(text) {
     clearMessage(); // Ensure only one message is present
     const msgElement = document.createElement('p');
@@ -100,10 +99,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function hidePagination() {
     if (paginationContainer) paginationContainer.style.display = 'none';
+    if (paginationList) paginationList.classList.add('invisible'); // Add invisible to UL
   }
 
   function showPagination() {
     if (paginationContainer) paginationContainer.style.display = '';
+    if (paginationList) paginationList.classList.remove('invisible'); // Remove invisible from UL
   }
 
   // Event listeners

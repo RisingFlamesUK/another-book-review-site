@@ -1282,30 +1282,31 @@ export async function getWorkCardData(work_olid, user_id = null) {
 
         let editionImageResults = [];
         if (editionCoverIdentifiers.length > 0) {
-            console.log(`   Fetching ${editionCoverIdentifiers.length} edition covers in batch ('S' size) for work ${work_olid}.`);
+            // console.log(`   Fetching ${editionCoverIdentifiers.length} edition covers in batch ('S' size) for work ${work_olid}.`);
             // Call getOlImage once for all edition covers
-            editionImageResults = await file.getOlImage('edition', editionCoverIdentifiers, 'S');
+            // editionImageResults = await file.getOlImage('edition', editionCoverIdentifiers, 'S');
+            editionImageResults = {}
         }
 
-        const coverPathMap = new Map();
-        editionImageResults.forEach(result => {
-            if (result.originalInput && result.localPath) {
-                coverPathMap.set(String(result.originalInput), result.localPath);
-            }
-        });
+        // const coverPathMap = new Map();
+        // editionImageResults.forEach(result => {
+        //     if (result.originalInput && result.localPath) {
+        //         coverPathMap.set(String(result.originalInput), result.localPath);
+        //     }
+        // });
 
         // Create a new array to hold editions with their covers AND isInCollection flag
         const editionsWithCachedCovers = workEditions.map((edition) => {
             const coverIdentifier = String(edition.coverId || edition.edition_olid); // Ensure string for map key
 
             // Get the local path from the map, defaulting to null if not found
-            const coverLocalPath = coverPathMap.get(coverIdentifier) || null;
+            // const coverLocalPath = coverPathMap.get(coverIdentifier) || null;
 
             // Ensure language is an array
             const languageArray = Array.isArray(edition.languages) ? edition.languages : (edition.languages ? [edition.languages] : []);
             return {
                 ...edition,
-                cover: coverLocalPath, // This will now correctly link the cover path
+                cover_identifier: coverIdentifier, // This will now correctly link the cover path
                 languages: languageArray, // Ensure this is named 'languages' (plural) for consistency
                 // Add the isInCollection flag
                 isInCollection: user_id ? userCollectedEditionOlids.has(edition.edition_olid) : false

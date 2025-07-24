@@ -4,7 +4,7 @@
     //*********************************//
     //format the parameters for display//
     //*********************************//
-    // console.log('DEBUG: card', card);
+    console.log('DEBUG: card', card);
     // Title
     let displayTitle = toTitleCase(card.workData.title) || "Unknown Title";
 
@@ -158,30 +158,13 @@
               <a href="/edition/<%= edition.edition_olid %>" class="edition-link-card">
                 <div class="work-edition-group edition-item" data-edition-olid="<%= edition.edition_olid %>">
                   <div class="float-left">
-                    <% if ( !!edition.cover_identifier) { %>
                     <div class="edition-image-container" data-cover-id="<%= edition.cover_identifier %>">
-                      <img src="/assets/images/book placeholder.webp" class="no-cover work-edition-image" alt="<%= edition.title %> Cover Placeholder">
+                      <img src="/assets/images/book placeholder.webp" alt="<%= edition.title %> Book Cover" class="work-edition-image no-cover">
                     </div>
-                    <% } else { %>
-                    <% if (locals.user) { %>
-                    <% if (edition.isInCollection) { %>
-                    <div class="in-collection-badge flex align-center justify-center" data-edition-olid="<%= edition.edition_olid %>">
-                      In My Collection <i class="bi bi-bookmark-check-fill add-books-icon"></i>
+                    <div class="missing-cover-overlay-s flex vertical align-center">
+                      <p class="missing-cover-text-s"><i>(Cover unavailable)</i></p>
                     </div>
-                    <% } else { %>
-                    <div class="add-books-button button page-navigation-button add-to-collection-btn" data-edition-olid="<%= edition.edition_olid %>">
-                      Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>
-                    </div>
-                    <% } %>
-                    <% } %>
-                    <div class="missing-cover-container">
-                      <img src="/assets/images/book placeholder.webp" alt="<%= displayTitle %> Book Cover Image" class="no-cover work-edition-image">
 
-                      <div class="missing-cover-overlay-s flex vertical align-center">
-                        <p class="missing-cover-text-s"><i>(Cover unavailable)</i></p>
-                      </div>
-                    </div>
-                    <% } %>
 
                   </div>
                   <%= edition.title %>

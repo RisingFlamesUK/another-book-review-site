@@ -158,10 +158,8 @@
               <a href="/edition/<%= edition.edition_olid %>" class="edition-link-card">
                 <div class="work-edition-group edition-item" data-edition-olid="<%= edition.edition_olid %>">
                   <div class="float-left">
-                    <% if ( !!edition.cover_identifier) { %>
-                    <div class="edition-image-container" data-cover-id="<%= edition.cover_identifier %>">
-                      <img src="/assets/images/book placeholder.webp" class="no-cover work-edition-image" alt="<%= edition.title %> Cover Placeholder">
-                    </div>
+                    <% if (edition.cover) { %>
+                    <img src="<%= edition.cover %>" alt="<%= edition.title %> Book Cover" class="work-edition-image">
                     <% } else { %>
                     <% if (locals.user) { %>
                     <% if (edition.isInCollection) { %>
@@ -205,11 +203,11 @@
               <% } %>
             </div>
             <div class="edition-card-holder">
-              <!-- edition cards here -->
-              <div id="pagination-controls" class="pagination flex justify-center">
-                <ul id="pagination-list"></ul>
+                <!-- edition cards here -->
+                <div id="pagination-controls" class="pagination flex justify-center">
+                  <ul id="pagination-list"></ul>
+                </div>
               </div>
-            </div>
           </div>
         </div>
       </div>

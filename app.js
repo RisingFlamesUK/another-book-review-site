@@ -571,6 +571,30 @@ app.get('/works/:work_olid', async (req, res) => {
 
 });
 
+app.post('/work/covers', async (req, res) => {
+    const {
+        urls
+    } = req.body;
+
+    if (!Array.isArray(urls) || !urls.length) return res.json({});
+
+    try {
+        // Use 'S' for small covers for edition cards as they are smaller
+        const results = await file.getOlImage('edition', urls, 'S');
+        const arr = Array.isArray(results) ? results : [results];
+        const map = {};
+        arr.forEach(r => {
+            if (r.status === 'downloaded' || r.status === 'cached') {
+                map[r.remoteImageUrl] = r.localPath;
+            }
+        });
+
+        res.json(map);
+    } catch (err) {
+        res.status(500).json({});
+    }
+});
+
 //-------------------------------------
 // 7.	Search 
 //-------------------------------------

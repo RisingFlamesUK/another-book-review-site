@@ -4,7 +4,7 @@ This site was created in order to practice and showcase my skills and was a caps
 **"The Complete Full-Stack Web Development Bootcamp"** - Dr Angela Yu
 
 This is Capstone 5, which requires the creation of a Book Notes site. I have gone a few steps further and included multi-user access, user authentication, book reviews and scoring.
-Due to increased scope (which I wanted to do as this will be part of my portfolio), I spent a little over 1 month on this capstone project.
+Due to increased scope (which I wanted to do as this will be part of my portfolio), I spent approximately 1 month and a half actively working on this capstone project.
 All password data is encrypted by the database. I recommend altering the code to use HTTPS to ensure all client server communication is encrypted if you are going to use this on the web.
 
 I use a combination of APIs provided by Open Library:
@@ -125,3 +125,8 @@ Include comments throughout your code to explain your logic.
 
 Use what you have learnt about GitHub to commit and push your project to GitHub so that you can share it with other students in the Q&A area, I'd love to see what you've build too! You can tweet at me `@yu_angela`
 Include a `Readme.md` file that explains how to start your server, what commands are needed to run your code. e.g. `npm i` and then `nodemon index.js`.
+
+## In this Commited Change
+
+- improved work.ejs / work-edition-script.js / backlend-handler.js /app.js to ensure only images that are required to render are downloaded. (improved page loading times)
+- removed browser history manipulation in login-signup.js
