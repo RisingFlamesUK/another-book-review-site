@@ -1,42 +1,45 @@
 // public/js/edition-script.js
+
 document.addEventListener('DOMContentLoaded', () => {
+    // === GLOBAL STATE & CONSTANTS ===
     const body = document.body;
     const editionOlid = body.dataset.editionOlid;
     const workOlid = body.dataset.workOlid;
-    let userReviewId = body.dataset.userReviewID || '';
-    let hasUserReview = Boolean(userReviewId);
+    window.userReviewId = body.dataset.userReviewID || '';
+    let hasUserReview = Boolean(window.userReviewId);
     const isUserLoggedIn = Boolean(body.dataset.username);
     let isInCollection = (body.dataset.isInCollection === 'true');
 
-    // DOM references
+    // === DOM REFERENCES ===
     const reviewActionContainer = document.getElementById('review-action-container');
     const collectionStatusContainer = document.querySelector('.edition-collection-status-container');
     const userReviewFormWrapper = document.getElementById('user-review-form');
-    const backButton = document.getElementById('back-button');
     const section = document.getElementById('user-review-section');
     const statusDropdown = document.querySelector('.status-select');
     const removeBtn = document.getElementById('remove-book-button');
+    const noReviewPlaceholder = document.getElementById('no-reviews-placeholder');
 
+    // === HELPER: DOM Elements by Role ===
     function getElements() {
         return {
             addBtn: reviewActionContainer.querySelector('.add-review-button'),
             infoSpan: document.getElementById('add-book-span'),
-            userCard: document.querySelector(`#review-container-${userReviewId} .review-card`)
+            userCard: document.querySelector(`#review-container-${window.userReviewId} .review-card`)
         };
     }
 
+    // === INITIALIZE STAR PICKER IN FORM ===
     function initializeFormStars() {
         const starContainer = document.getElementById('reviewStarPicker');
         const hiddenInput = document.getElementById('reviewFormScoreInput');
         const scoreLabel = document.getElementById('selected-star-score');
-
         if (!starContainer || !hiddenInput || !scoreLabel) return;
 
         let currentScore = parseInt(starContainer.dataset.originalScore, 10) || 0;
         let selectedScore = currentScore;
-
         const starIcons = starContainer.querySelector('#reviewStarIcons');
         starIcons.innerHTML = '';
+
         for (let i = 1; i <= 5; i++) {
             const star = document.createElement('i');
             star.className = `user-star bi ${i <= currentScore ? 'bi-star-fill' : 'bi-star'}`;
@@ -45,39 +48,32 @@ document.addEventListener('DOMContentLoaded', () => {
             starIcons.appendChild(star);
         }
 
-        const updateStars = (score) => {
+        const updateStars = score => {
             [...starIcons.children].forEach((starEl, idx) => {
                 const value = idx + 1;
-                starEl.classList.remove('bi-star-fill', 'bi-star');
-                starEl.classList.add(value <= score ? 'bi-star-fill' : 'bi-star');
+                starEl.classList.toggle('bi-star-fill', value <= score);
+                starEl.classList.toggle('bi-star', value > score);
             });
         };
 
-        const updateLabel = (score) => {
-            scoreLabel.textContent = score;
-        };
-
-        const updateHiddenInput = (score) => {
-            hiddenInput.value = score;
-        };
-
+        const updateLabel = score => scoreLabel.textContent = score;
+        const updateHiddenInput = score => hiddenInput.value = score;
         const updateButtonState = () => {
             const submitBtn = document.getElementById('submitReviewButton');
-            if (submitBtn) {
-                submitBtn.disabled = selectedScore === 0;
-            }
+            if (submitBtn) submitBtn.disabled = selectedScore === 0;
         };
 
         updateLabel(currentScore);
         updateHiddenInput(currentScore);
         updateButtonState();
 
-        starIcons.addEventListener('mouseover', (e) => {
+        starIcons.addEventListener('mouseover', e => {
             const star = e.target.closest('.user-star');
-            if (!star) return;
-            const val = parseInt(star.dataset.value, 10);
-            updateStars(val);
-            updateLabel(val);
+            if (star) {
+                const val = parseInt(star.dataset.value, 10);
+                updateStars(val);
+                updateLabel(val);
+            }
         });
 
         starIcons.addEventListener('mouseout', () => {
@@ -85,33 +81,29 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLabel(selectedScore);
         });
 
-        starIcons.addEventListener('click', (e) => {
+        starIcons.addEventListener('click', e => {
             const star = e.target.closest('.user-star');
-            if (!star) return;
-            const val = parseInt(star.dataset.value, 10);
-            selectedScore = val;
-            currentScore = val;
-            updateStars(val);
-            updateLabel(val);
-            updateHiddenInput(val);
-            updateButtonState();
+            if (star) {
+                const val = parseInt(star.dataset.value, 10);
+                selectedScore = currentScore = val;
+                updateStars(val);
+                updateLabel(val);
+                updateHiddenInput(val);
+                updateButtonState();
+            }
         });
     }
 
+    // === RENDER COLLECTION BADGE OR BUTTON ===
     function renderCollectionStatus() {
         if (!collectionStatusContainer || !isUserLoggedIn) return;
-
         collectionStatusContainer.innerHTML = '';
 
         const removeContainer = document.querySelector('.remove-book-button-container');
-        if (removeContainer) {
-            removeContainer.classList.toggle('invisible', !isInCollection);
-        }
+        if (removeContainer) removeContainer.classList.toggle('invisible', !isInCollection);
 
         const statusWrapper = document.querySelector('.book-status');
-        if (statusWrapper) {
-            statusWrapper.classList.toggle('invisible', !isInCollection);
-        }
+        if (statusWrapper) statusWrapper.classList.toggle('invisible', !isInCollection);
 
         if (isInCollection) {
             collectionStatusContainer.innerHTML = `
@@ -123,8 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div id="edition-add-books-button" class="add-books-button button page-navigation-button add-to-collection-btn" data-edition-olid="${editionOlid}">
           Add to My Collection<i class="bi bi-bookmark-plus-fill add-books-icon"></i>
         </div>`;
-            const btn = document.getElementById('edition-add-books-button');
-            if (btn) btn.addEventListener('click', handleAddButtonClick);
+            document.getElementById('edition-add-books-button')?.addEventListener('click', handleAddButtonClick);
         }
     }
 
@@ -133,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = e.currentTarget;
         btn.disabled = true;
         btn.textContent = 'Adding...';
+
         try {
             const resp = await fetch('/add-edition', {
                 method: 'POST',
@@ -144,19 +136,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
             if (!resp.ok) throw new Error(await resp.text());
-            isInCollection = true;
-            const scoreSection = document.getElementById('edition-user-score-section');
-            if (scoreSection) {
-                scoreSection.classList.remove('invisible');
-                const stars = scoreSection.querySelector('.user-stars-container');
-                if (stars) window.initializeUserStars?.(stars);
-            }
 
-            const statusWrapper = document.querySelector('.book-status');
-            if (statusWrapper) {
-                statusWrapper.classList.remove('invisible');
-            }
-            
+            isInCollection = true;
+
+            document.getElementById('edition-user-score-section')?.classList.remove('invisible');
+            document.querySelector('.book-status')?.classList.remove('invisible');
             renderCollectionStatus();
             renderReviewActionStatus();
         } catch (err) {
@@ -167,26 +151,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // === REVIEW LOGIC: ADD/EDIT FORM, DISPLAY, DELETE ===
     function renderReviewActionStatus() {
-        if (!reviewActionContainer) return;
         const {
             addBtn,
             infoSpan
         } = getElements();
-
-        // Always reset both invisible if needed
         addBtn?.classList.add('invisible');
         infoSpan?.classList.add('invisible');
 
-        if (!isUserLoggedIn) {
-            // logged out: both hidden
-        } else if (!isInCollection) {
-            // logged in but NOT in collection: show info span
-            infoSpan?.classList.remove('invisible');
-        } else {
-            // in collection
-            if (!hasUserReview) addBtn?.classList.remove('invisible');
-        }
+        if (!isUserLoggedIn) return;
+        if (!isInCollection) infoSpan?.classList.remove('invisible');
+        else if (!hasUserReview) addBtn?.classList.remove('invisible');
     }
 
     function openReviewForm(initial = {}) {
@@ -196,12 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } = getElements();
         addBtn?.classList.add('invisible');
         userCard?.classList.add('invisible');
-        showReviewForm({
-            review_id: initial.review_id,
-            review_title: initial.review_title,
-            review: initial.review,
-            score: initial.score
-        });
+        showReviewForm(initial);
     }
 
     async function showReviewForm({
@@ -213,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userReviewFormWrapper.innerHTML = '';
         userReviewFormWrapper.classList.remove('invisible');
         const payload = {
-            reviewId: review_id || userReviewId || '',
+            reviewId: review_id || window.userReviewId || '',
             initialTitle: review_title || '',
             initialReview: review || '',
             initialScore: score || 0
@@ -227,23 +198,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify(payload)
             });
-            const text = await resp.text();
             if (!resp.ok) throw new Error(`Status ${resp.status}`);
-            userReviewFormWrapper.innerHTML = text;
-            setTimeout(() => {
-                try {
-                    initializeFormStars();
-                } catch (starsErr) {
-                    console.error('Error during initializeFormStars:', starsErr);
-                }
-            }, 0);
 
-            // Attach event listeners
+            userReviewFormWrapper.innerHTML = await resp.text();
+            setTimeout(initializeFormStars, 0);
             document.getElementById('reviewForm')?.addEventListener('submit', handleReviewFormSubmission);
             document.getElementById('cancelReviewButton')?.addEventListener('click', hideReviewForm);
-
-        } catch (renderErr) {
-            console.error('Error assembling form:', renderErr);
+        } catch (err) {
+            console.error('Review form error:', err);
             alert('Could not load review form.');
             hideReviewForm();
         }
@@ -260,49 +222,16 @@ document.addEventListener('DOMContentLoaded', () => {
         renderReviewActionStatus();
     }
 
-    function applyStatusClass(selectElement) {
-        selectElement.classList.remove('status-unread', 'status-reading', 'status-completed');
-
-        const val = parseInt(selectElement.value, 10);
-        if ([1, 2, 3].includes(val)) {
-            selectElement.classList.add('status-unread');
-        } else if (val === 4) {
-            selectElement.classList.add('status-reading');
-        } else if (val === 5) {
-            selectElement.classList.add('status-completed');
-        }
-    }
-
-    document.addEventListener('click', e => {
-        const edit = e.target.closest('.edit-review-button');
-        if (edit && isUserLoggedIn) {
-            const container = edit.closest(`[id^="review-container-"]`);
-            const card = container?.querySelector('.review-card');
-            openReviewForm({
-                review_id: card?.dataset.reviewId,
-                review_title: card?.dataset.initialtitle,
-                review: card?.dataset.initialreview,
-                score: +card?.dataset.initialscore
-            });
-        }
-        if (e.target.closest('.add-review-button')) {
-            // in-case the original EJS button exists
-            openReviewForm();
-        }
-    });
-
     async function handleReviewFormSubmission(evt) {
         evt.preventDefault();
         const form = evt.target;
-        const scoreStr = form.querySelector('#reviewFormScoreInput')?.value;
-        if (!scoreStr) return alert('Select a rating');
-        const score = parseInt(scoreStr, 10);
+        const score = parseInt(form.querySelector('#reviewFormScoreInput')?.value, 10);
+        if (!score) return alert('Select a rating');
         const btn = form.querySelector('#submitReviewButton');
         btn.disabled = true;
         btn.textContent = 'Submitting...';
 
         try {
-            console.log('Submitting review with score:', score, typeof score);
             const resp = await fetch('/set-user-review', {
                 method: 'POST',
                 headers: {
@@ -312,25 +241,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     edition_olid: editionOlid,
                     review_title: form.reviewTitle.value,
                     review: form.review.value,
-                    score: +score
+                    score
                 })
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.message);
-            userReviewId = data.userReviewID || userReviewId;
+            if (!resp.ok) throw new Error(data?.message || 'Unexpected error.');
+
+            window.userReviewId = data.userReviewID || window.userReviewId;
             hasUserReview = true;
             await refreshReviewSection();
 
-            const topStarsContainer = document.querySelector('#edition-user-score-section .user-stars-container');
-            if (topStarsContainer) {
-                topStarsContainer.dataset.originalScore = score;
-                window.initializeUserStars(topStarsContainer);
+            const topStars = document.querySelector('#edition-user-score-section .user-stars-container');
+            if (topStars) {
+                topStars.dataset.originalScore = score;
+                window.initializeUserStars(topStars);
             }
 
             const workScoreP = document.querySelector('#edition-work-score p');
             if (workScoreP && data.workScore != null && data.reviewCount != null) {
                 window.updateWorkScoreDisplay(workScoreP, data.workScore, data.reviewCount);
             }
+
             hideReviewForm();
         } catch (err) {
             alert('Error saving review: ' + err.message);
@@ -343,40 +274,58 @@ document.addEventListener('DOMContentLoaded', () => {
     async function refreshReviewSection() {
         try {
             const resp = await fetch(`/render-partial/user-review?edition_olid=${editionOlid}&work_olid=${workOlid}`);
-            if (resp.ok) {
-                const html = await resp.text();
-                let wrapper = document.getElementById(`review-container-${userReviewId}`);
-                if (!wrapper) {
-                    wrapper = document.createElement('div');
-                    wrapper.id = `review-container-${userReviewId}`;
-                    section.insertBefore(wrapper, section.firstChild);
-                }
-                wrapper.innerHTML = html;
+            if (!resp.ok) return;
 
-                const noReviewsEl = document.getElementById('no-reviews-placeholder');
-                if (noReviewsEl) {
-                    noReviewsEl.classList.add('invisible');
-                }
-
-                const newStarsWrapper = wrapper.querySelector('.user-stars-container');
-                if (newStarsWrapper) {
-                    window.initializeUserStars(newStarsWrapper);
-                }
+            const html = await resp.text();
+            let wrapper = document.getElementById(`review-container-${window.userReviewId}`);
+            if (!wrapper) {
+                wrapper = document.createElement('div');
+                wrapper.id = `review-container-${window.userReviewId}`;
+                section.insertBefore(wrapper, section.firstChild);
             }
+
+            wrapper.innerHTML = html;
+            noReviewPlaceholder?.classList.add('invisible');
+            window.initializeUserStars(wrapper.querySelector('.user-stars-container'));
         } finally {
             renderReviewActionStatus();
         }
     }
 
+    // === REVIEW BUTTON EVENTS ===
+    document.addEventListener('click', e => {
+        const edit = e.target.closest('.edit-review-button');
+        if (edit && isUserLoggedIn) {
+            const container = edit.closest(`[id^="review-container-"]`);
+            const card = container?.querySelector('.review-card');
+            openReviewForm({
+                review_id: card?.dataset.reviewId,
+                review_title: card?.dataset.initialtitle,
+                review: card?.dataset.initialreview,
+                score: +card?.dataset.initialscore
+            });
+        }
+
+        if (e.target.closest('.add-review-button')) {
+            openReviewForm();
+        }
+    });
+
+    // === STATUS DROPDOWN LOGIC ===
+    function applyStatusClass(select) {
+        select.classList.remove('status-unread', 'status-reading', 'status-completed');
+        const val = parseInt(select.value, 10);
+        if ([1, 2, 3].includes(val)) select.classList.add('status-unread');
+        else if (val === 4) select.classList.add('status-reading');
+        else if (val === 5) select.classList.add('status-completed');
+    }
+
     if (statusDropdown) {
         applyStatusClass(statusDropdown);
-
         statusDropdown.addEventListener('click', e => e.stopPropagation());
-
-        statusDropdown.addEventListener('change', async (e) => {
+        statusDropdown.addEventListener('change', async e => {
             const select = e.target;
             const newStatusId = parseInt(select.value, 10);
-            const editionOlid = select.dataset.editionOlid;
 
             try {
                 const resp = await fetch('/set-user-book-status', {
@@ -389,24 +338,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         status_id: newStatusId
                     })
                 });
-
                 const data = await resp.json();
-                if (!resp.ok) throw new Error(data.message || 'Failed to update status');
-
+                if (!resp.ok) throw new Error(data?.message || 'Unexpected error.');
                 applyStatusClass(select);
-                select.blur(); // Removes focus from the element (allows css formatting for selected status to apply)
-
+                select.blur();
             } catch (err) {
                 console.error('Error updating status:', err);
-                alert('Failed to update book status. Please try again.');
+                alert('Failed to update status.');
             }
         });
     }
 
+    // === REMOVE FROM COLLECTION ===
     if (removeBtn) {
-        removeBtn.addEventListener('click', async (e) => {
+        removeBtn.addEventListener('click', async e => {
             e.preventDefault();
-            if (!confirm('Are you sure you want to remove this book from your collection? It will also remove all notes and reviews')) return;
+            if (!confirm('Are you sure you want to remove this book from your collection?')) return;
 
             try {
                 const resp = await fetch('/delete-user-book', {
@@ -419,57 +366,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                 });
                 const data = await resp.json();
-                if (!resp.ok) throw new Error(data.message);
+                if (!resp.ok) throw new Error(data?.message || 'Unexpected error.');
 
                 isInCollection = false;
                 hasUserReview = false;
-                userReviewId = '';
 
-                // 🔁 Rerender sections
+                const card = document.getElementById(`review-container-${window.userReviewId}`);
+                if (card) card.remove();
+                window.userReviewId = '';
+
                 renderCollectionStatus();
                 renderReviewActionStatus();
 
-                // 🚫 Hide or clear "My Score" section
                 const scoreWrapper = document.getElementById('edition-user-score-section');
-                if (scoreWrapper) {
-                    scoreWrapper.classList.add('invisible');
-                }
+                scoreWrapper?.classList.add('invisible');
 
-                const stars = scoreWrapper.querySelector('.user-stars-container');
+                const stars = scoreWrapper?.querySelector('.user-stars-container');
                 if (stars) {
                     stars.dataset.originalScore = '0';
-                    window.initializeUserStars?.(stars); // Re-init to reflect removal
+                    window.initializeUserStars?.(stars);
                 }
 
-                // 🎯 Hide status dropdown
-                const statusWrapper = document.querySelector('.book-status');
-                if (statusWrapper) {
-                    statusWrapper.classList.add('invisible');
-                }
-
-                // ❌ Remove user's review card if it exists
-                if (userReviewId) {
-                    const card = document.getElementById(`review-container-${userReviewId}`);
-                    if (card) card.remove();
-                }
-
-                // ✅ Refresh work score stars and review count display
+                document.querySelector('.book-status')?.classList.add('invisible');
+                
                 const workScoreP = document.querySelector('#edition-work-score p');
                 if (workScoreP && data.workScore != null && data.reviewCount != null) {
                     window.updateWorkScoreDisplay(workScoreP, data.workScore, data.reviewCount);
                 }
 
-                // 🧼 Clear review form if visible
-                if (userReviewFormWrapper) {
-                    userReviewFormWrapper.innerHTML = '';
-                    userReviewFormWrapper.classList.add('invisible');
-                }
+                userReviewFormWrapper.innerHTML = '';
+                userReviewFormWrapper.classList.add('invisible');
 
-                // 🕳️ Show empty state if no reviews remain
-                const section = document.getElementById('user-review-section');
                 const remainingReviews = section.querySelectorAll('.review-card');
                 if (remainingReviews.length === 0) {
-                    document.getElementById('no-reviews-placeholder')?.classList.remove('invisible');
+                    noReviewPlaceholder?.classList.remove('invisible');
                 }
             } catch (err) {
                 alert('Failed to remove book: ' + err.message);
@@ -477,11 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    backButton?.addEventListener('click', e => {
-        e.preventDefault();
-        window.history.back();
-    });
-
+    // === INITIALIZE ===
     renderCollectionStatus();
     renderReviewActionStatus();
     window.refreshUserReviewSection = refreshReviewSection;

@@ -128,4 +128,6 @@ Include a `Readme.md` file that explains how to start your server, what commands
 
 ## In this Commited Change
 
-- Allow users to remove a book from their collection (Demonstrate ability to delete data)
+- Fix bug where removing an edition from the collection did not update the edition page to reflect the removed user review and update displayed stars correctly
+- delete legact file
+- fix minor typo in revie.ejs resulting in second bracket not falling within <i></i> with the rest of the text

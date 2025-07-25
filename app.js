@@ -326,7 +326,7 @@ app.get('/render-partial/user-review', validateQuery(['edition_olid', 'work_olid
     const work_olid = req.query.work_olid;
 
     if (!user || !user.id) {
-        return res.status(401).send('Unauthorized');
+        return res.status(401).send('You have been logged out');
     }
 
     try {
@@ -702,7 +702,6 @@ app.post('/add-edition', validateBody(['edition_olid']), async (req, res) => {
     }
 
     const user_id = req.session.user.id;
-    // console.log(req.body);
 
     try {
 
@@ -757,9 +756,13 @@ app.post('/set-user-score', validateBody(['edition_olid', 'score']), async (req,
 
         if (result.review.score === score) {
 
+
+            console.log(`Successfully updated user scrore user: ${user_id}, edition: ${edition_olid}, new score:  ${score}`)
+
             res.json({
                 success: true,
                 message: 'Rating updated successfully.',
+                newUserReviewId: result.review.id,
                 newUserScore: result.review.score,
                 newWorkScore: result.workScore,
                 newWorkReviewCount: result.reviewCount
@@ -802,10 +805,12 @@ app.post('/set-user-review', validateBody(['edition_olid', 'review', 'review_tit
     try {
         const result = await putUserReview(user_id, edition_olid, review_title, review, score);
 
+        console.log(`Successfully added user review user: ${user_id}, edition: ${edition_olid}, review:`, result.review)
+
         return res.json({
             success: true,
             message: 'Review saved.',
-            userReviewID: result.review.review_id,
+            userReviewID: result.review.id,
             workScore: result.workScore,
             reviewCount: result.reviewCount
         });
@@ -845,6 +850,9 @@ app.put('/set-user-book-status', validateBody(['edition_olid', 'status_id']), as
                 message: 'Edition not in your collection — cannot update status.'
             });
         }
+
+        console.log(`Successfully set user edition status user: ${user_id}, edition: ${edition_olid}, status ID: ${status_id}`)
+        
         
         return res.json({
             success: true,
@@ -874,12 +882,24 @@ app.delete('/delete-user-book', validateBody(['edition_olid']), async (req, res)
     } = req.body;
     const user_id = req.session.user.id;
 
+
     try {
-        const deletedCount = await deleteUserEdition(user_id, edition_olid);
+        const result = await deleteUserEdition(user_id, edition_olid);
+        const deletedCount = result.deletedCount;
+        const workScore = result.workscore.workScore;
+        const reviewCount = result.workscore.reviewCount
+
         if (deletedCount === 0) {
             return res.status(404).json({ message: 'Book not found in collection' });
         }
-        return res.json({ message: 'Book removed from collection' });
+
+        console.log(`Successfully removed ${edition_olid} from user: ${user_id}'s collection`)
+
+        return res.json({ 
+            message: 'Book removed from collection',
+            workScore,
+            reviewCount
+        });
     } catch (err) {
         console.error('Error deleting user book:', err);
         return res.status(500).json({ message: 'Internal server error' });

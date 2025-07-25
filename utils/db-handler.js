@@ -1166,14 +1166,14 @@ export async function deleteUserEdition(user_id, edition_olid) {
         `, [user_id, edition_olid]);
 
         const deletedCount = result.rowCount;
-
+        let workscore
         // If user had a review, refresh the score
         if (userScore !== null) {
-            await refreshWorkScore(client, work_olid);
+            workscore = await refreshWorkScore(client, work_olid);
         }
 
         await client.query('COMMIT');
-        return deletedCount;
+        return {deletedCount, workscore};
 
     } catch (error) {
         await client.query('ROLLBACK');

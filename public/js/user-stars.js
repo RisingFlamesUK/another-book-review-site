@@ -1,5 +1,8 @@
-// This file is public/js/user-stars.js
+// public/js/user-stars.js
 
+// === STAR RENDERING HELPERS ===
+
+// Render static star HTML from numeric score (for average display)
 const clientScoreToStars = (score) => {
   const starScore = Math.round(score || 0);
   let stars = '';
@@ -9,6 +12,7 @@ const clientScoreToStars = (score) => {
   return stars;
 };
 
+// Render suffix text for average score
 const clientProcessScore = (score) => {
   if (score === null || score === '') {
     return '<span class="star-suffix"><i>&nbsp;(Not reviewed)</i></span>';
@@ -16,6 +20,7 @@ const clientProcessScore = (score) => {
   return `<span class="work-score">(${score})</span>`;
 };
 
+// Render interactive stars for a user rating (with data-value for each star)
 const renderUserStarsHtml = (scoreToDisplay) => {
   const roundedScore = Math.round(scoreToDisplay || 0);
   let starsHtml = '';
@@ -26,16 +31,17 @@ const renderUserStarsHtml = (scoreToDisplay) => {
   return starsHtml;
 };
 
-// Helper: full HTML with prefix/suffix
+// Render the complete user star HTML with optional suffix
 const renderCompleteUserStarsHtml = (score) => {
   const starsHtml = renderUserStarsHtml(score);
-  // const prefix = score === 0 ? 'Score Now: ' : '';
   const prefix = '';
   const suffix = score === 0 ? '<span class="star-suffix">(Not reviewed)</span>' : '';
   return `${prefix}${starsHtml}${suffix}`;
 };
 
-// Update overall work score display
+// === WORK SCORE DISPLAY ===
+
+// Update a paragraph element with the overall average score and review count
 window.updateWorkScoreDisplay = (paragraphEl, totalScore, reviewCount) => {
   const avg = reviewCount > 0 ? (totalScore / reviewCount).toFixed(1) : '0.0';
   const starsHtml = clientScoreToStars(avg);
@@ -45,7 +51,9 @@ window.updateWorkScoreDisplay = (paragraphEl, totalScore, reviewCount) => {
   paragraphEl.innerHTML = `Overall: &nbsp; ${starsHtml} ${scoreHtml}<span class="star-suffix"><i>${countText}</i></span>`;
 };
 
-// Initialize user editable stars UI
+// === USER STAR INTERACTION LOGIC ===
+
+// Initialize user star interaction (hover, click, preview)
 window.initializeUserStars = (container) => {
   const originalScore = parseFloat(container.dataset.originalScore) || 0;
 
@@ -55,11 +63,12 @@ window.initializeUserStars = (container) => {
 
   updatePreview(originalScore);
 
-  // Remove old handlers if re-initializing
+  // === Clean up old listeners if reinitializing ===
   ['mouseover', 'mouseout', 'click'].forEach(evt => {
     container.removeEventListener(evt, container[`__${evt}Handler__`]);
   });
 
+  // === Mouseover: preview score ===
   const handleMouseOver = (e) => {
     const star = e.target.closest('.user-star');
     if (!star) return;
@@ -72,7 +81,8 @@ window.initializeUserStars = (container) => {
     });
   };
 
-  const handleMouseOut = (e) => {
+  // === Mouseout: restore original score ===
+  const handleMouseOut = () => {
     const updatedScore = parseFloat(container.dataset.originalScore) || 0;
     Array.from(container.querySelectorAll('.user-star')).forEach(el => {
       const v = parseInt(el.dataset.value, 10);
@@ -82,12 +92,13 @@ window.initializeUserStars = (container) => {
     });
   };
 
+  // === Click: submit new score ===
   const handleClick = async (e) => {
     const clickedStar = e.target.closest('.user-star');
     if (!clickedStar) return;
 
-    e.stopPropagation();
     e.preventDefault();
+    e.stopPropagation();
 
     const newScore = parseInt(clickedStar.dataset.value, 10);
     const wrapper = clickedStar.closest('.user-rating-wrapper');
@@ -97,11 +108,6 @@ window.initializeUserStars = (container) => {
       editionOlid,
       workOlid
     } = wrapper.dataset;
-    console.log('Clicked star for user score update', {
-      editionOlid,
-      workOlid,
-      newScore
-    });
 
     try {
       const resp = await fetch('/set-user-score', {
@@ -118,6 +124,10 @@ window.initializeUserStars = (container) => {
 
       const body = await resp.json();
 
+      if (body.newUserReviewId) {
+        window.userReviewId = body.newUserReviewId;
+      }
+
       if (!resp.ok || !body.success) {
         if (resp.status === 401) {
           alert('Please log in to rate.');
@@ -128,20 +138,20 @@ window.initializeUserStars = (container) => {
         return;
       }
 
-      // 1. Update main work score on edition.ejs
+      // === Update Main Edition Page Score ===
       const fullEditionSection = document.getElementById('edition-work-score');
       if (fullEditionSection) {
         const p = fullEditionSection.querySelector('p');
         if (p) window.updateWorkScoreDisplay(p, body.newWorkScore, body.newWorkReviewCount);
       }
 
-      // 2. Update user star blocks (all wrappers)
+      // === Update All Relevant User Rating Wrappers ===
       document.querySelectorAll(`.user-rating-wrapper[data-edition-olid="${editionOlid}"]`).forEach(userWrapper => {
         const starsContainer = userWrapper.querySelector('.user-stars-container');
         if (starsContainer) {
           starsContainer.dataset.originalScore = body.newUserScore;
           starsContainer.innerHTML = renderCompleteUserStarsHtml(body.newUserScore);
-          window.initializeUserStars(starsContainer); // reattach listeners
+          window.initializeUserStars(starsContainer); // reattach handlers
         }
 
         const cardContainer = userWrapper.closest('.card-container');
@@ -153,7 +163,7 @@ window.initializeUserStars = (container) => {
         }
       });
 
-      // 3. Refresh user review section (if on edition.ejs)
+      // === Refresh Review Section (on edition.ejs) ===
       window.refreshUserReviewSection?.();
 
     } catch (err) {
@@ -162,6 +172,7 @@ window.initializeUserStars = (container) => {
     }
   };
 
+  // === Attach Event Listeners ===
   container.addEventListener('mouseover', handleMouseOver);
   container.addEventListener('mouseout', handleMouseOut);
   container.addEventListener('click', handleClick);
@@ -171,7 +182,7 @@ window.initializeUserStars = (container) => {
   container.__clickHandler__ = handleClick;
 };
 
-// Initialize all on DOM load
+// === ON DOM READY: Initialize All Star Blocks ===
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.user-stars-container').forEach(el => {
     window.initializeUserStars(el);
