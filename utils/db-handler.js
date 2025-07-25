@@ -697,11 +697,9 @@ export async function getUserReviews(user_id, edition_olid = undefined) {
  */
 export async function getWorksScore(work_olid_or_olids, client = database) {
     try {
-        const workOlids = typeof work_olid_or_olids === 'string' ?
-            [work_olid_or_olids] :
+        const workOlids = typeof work_olid_or_olids === 'string' ? [work_olid_or_olids] :
             Array.isArray(work_olid_or_olids) ?
-            work_olid_or_olids :
-            [];
+            work_olid_or_olids : [];
 
         if (workOlids.length === 0) {
             return Array.isArray(work_olid_or_olids) ? [] : null;
@@ -832,7 +830,7 @@ export async function getAuthors(authorOlidInput) {
 
 
 //* --------------------------- *//
-//*    User Book (edit/add)     *//
+//* User Book (edit/add/delete) *//
 //*    functions                *//
 //* --------------------------- *//
 /**
@@ -1145,6 +1143,47 @@ export async function postUserEdition(user_id, edition_olid, status_id = 1) {
     }
 }
 
+export async function deleteUserEdition(user_id, edition_olid) {
+    const client = await database.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Get review to retrieve score and edition -> work relationship
+        const userReviews = await getUserReviews(user_id, edition_olid);
+        const userScore = userReviews?.[0]?.userscore ?? null;
+
+        const workResult = await client.query(`
+            SELECT work_olid FROM book_editions WHERE edition_olid = $1
+        `, [edition_olid]);
+
+        const work_olid = workResult.rows?.[0]?.work_olid;
+        if (!work_olid) throw new Error('Work OLID not found for edition.');
+
+        // Delete from users_books (cascades to review and notes)
+        const result = await client.query(`
+            DELETE FROM users_books
+            WHERE user_id = $1 AND edition_olid = $2
+        `, [user_id, edition_olid]);
+
+        const deletedCount = result.rowCount;
+
+        // If user had a review, refresh the score
+        if (userScore !== null) {
+            await refreshWorkScore(client, work_olid);
+        }
+
+        await client.query('COMMIT');
+        return deletedCount;
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(`Error deleting user edition (${user_id}, ${edition_olid}):`, error);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 /**
  * Checks if a specific edition already exists in a user's book collection in the database.
  *
@@ -1172,6 +1211,9 @@ export async function checkUserBook(user_id, edition_olid) {
     }
 }
 
+
+
+
 /**
  * Update or create the aggregated work score for a given work OLID.
  * You must pass either:
@@ -1186,7 +1228,7 @@ export async function checkUserBook(user_id, edition_olid) {
  * @param {boolean} params.isNewReview - True if this is a newly added review (not update).
  * @returns {Promise<{ newWorkScore: number, newReviewCount: number }>}
  */
-export async function updateWorkScore({
+async function updateWorkScore({
     client,
     work_olid,
     scoreChange,
@@ -1236,6 +1278,55 @@ export async function updateWorkScore({
         newWorkScore: newScore,
         newReviewCount: newCount
     };
+}
+
+export async function refreshWorkScore(client, work_olid) {
+    let ownDb = false;
+    try {
+        if (!client) {
+            client = await database.connect();
+            await client.query('BEGIN');
+            ownDb = true;
+        }
+
+        const res = await client.query(`
+            SELECT br.score
+            FROM book_editions AS be
+            JOIN users_books AS ub ON ub.edition_olid = be.edition_olid
+            JOIN book_review AS br ON ub.id = br.user_book_id
+            WHERE be.work_olid = $1
+        `, [work_olid]);
+
+        const reviewCount = res.rowCount;
+        const totalScore = res.rows.reduce((sum, row) => sum + (row.score || 0), 0);
+
+        await client.query(`
+        INSERT INTO works_scores (work_olid, score, review_count, last_checked)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT (work_olid)
+            DO UPDATE SET
+                score = EXCLUDED.score,
+                review_count = EXCLUDED.review_count,
+                last_checked = CURRENT_TIMESTAMP
+        `, [work_olid, totalScore, reviewCount]);
+
+        if (ownDb) {
+            await client.query('COMMIT');
+        }
+
+        if (ownDb) client.release();
+
+        return {
+            workScore: totalScore,
+            reviewCount
+        };
+
+    } catch (err) {
+        if (ownDb) await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        if (ownDb) client.release();
+    }
 }
 
 //* --------------------------- *//

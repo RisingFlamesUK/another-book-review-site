@@ -241,6 +241,10 @@ footer {
     margin-left: 20px;
 }
 
+.right-margin-20 {
+    margin-right: 20px;
+}
+
 .height100 {
     height: 100%;
 }
@@ -567,7 +571,9 @@ footer {
 
 .status-select {
   padding: 6px 10px;
+  padding-right: 1.7rem;
   font-size: 0.95rem;
+  text-align: center;
   border: 1px solid var(--highlight-color);
   border-radius: 6px;
   background-color: #f9f9f9;
@@ -777,6 +783,29 @@ footer {
     font-weight: 400;
     padding: 0;
     margin: 3px 0 0 0;
+}
+
+.remove-from-collection-btn {
+  background-color: #d9534f; /* Bootstrap "danger" red */
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.remove-from-collection-btn:hover {
+  background-color: #c9302c;
+}
+
+.remove-from-collection-btn:disabled {
+  background-color: #f2a3a1;
+  cursor: not-allowed;
 }
 
 .add-books-button {

@@ -153,7 +153,7 @@ CREATE TABLE book_notes (
 
 CREATE TABLE book_review (
     id BIGSERIAL PRIMARY KEY,
-    user_book_id INTEGER REFERENCES users_books (id) ON DELETE SET NULL,
+    user_book_id INTEGER REFERENCES users_books (id) ON DELETE CASCADE,
     review_title TEXT,
     review TEXT,
     score INTEGER,

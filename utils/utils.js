@@ -638,28 +638,6 @@ export function getReturnToUrl(req) {
     return returnTo;
 }
 
-export function sendHistoryReplacingRedirect(res, targetPath) {
-    console.log(`[DEBUG] utils.sendHistoryReplacingRedirect: Attempting to replace history with: ${targetPath}`);
-    res.setHeader('Content-Type', 'text/html');
-
-
-    return res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Redirecting...</title>
-        </head>
-        <body>
-            <p>Redirecting now...</p>
-            <script>
-                console.log("[DEBUG] Client-side script: Executing window.location.replace for: ${targetPath}");
-                window.location.replace('${targetPath}'); // Execute immediately
-            </script>
-        </body>
-        </html>
-    `);
-}
-
 
 const NAME_OVERRIDES = {
     "van gogh": "van Gogh",

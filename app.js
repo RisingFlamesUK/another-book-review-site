@@ -21,6 +21,7 @@ import {
     patchUserReview,
     logCurrentCache,
     putUserEditionStatus,
+    deleteUserEdition,
 } from './utils/db-handler.js';
 import generateSecret from "./utils/encryption-handler.js";
 import dotenv from 'dotenv';
@@ -856,6 +857,32 @@ app.put('/set-user-book-status', validateBody(['edition_olid', 'status_id']), as
             success: false,
             message: 'An internal server error occurred.'
         });
+    }
+});
+
+app.delete('/delete-user-book', validateBody(['edition_olid']), async (req, res) => {
+    // Ensure user is logged in
+    if (!req.session.user || !req.session.user.id) {
+        return res.status(401).json({
+            success: false,
+            message: 'You must be logged in to edit/post a review.'
+        });
+    }
+
+    const {
+        edition_olid,
+    } = req.body;
+    const user_id = req.session.user.id;
+
+    try {
+        const deletedCount = await deleteUserEdition(user_id, edition_olid);
+        if (deletedCount === 0) {
+            return res.status(404).json({ message: 'Book not found in collection' });
+        }
+        return res.json({ message: 'Book removed from collection' });
+    } catch (err) {
+        console.error('Error deleting user book:', err);
+        return res.status(500).json({ message: 'Internal server error' });
     }
 });
 

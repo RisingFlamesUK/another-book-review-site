@@ -14,11 +14,11 @@ I use a combination of APIs provided by Open Library:
 
 ## TO DO:
 
-- Allow users to remove a book from their collection (Demonstrate ability to delete data)
-- **stretch goal:** implement multi-language support
+- **stretch goal:** clean up and refactor adding improved comments
 - **stretch goal:** add user profile management (including picture upload & default language setting)
 - **stretch goal:** update the edition page to allow user notes to be added 
 - **stretch goal:** add subjects page linked from the browse
+- **stretch goal:** implement multi-language support
 
 ---
 
@@ -128,10 +128,4 @@ Include a `Readme.md` file that explains how to start your server, what commands
 
 ## In this Commited Change
 
-- Add user book status selection to editions (Unread (Want), Unread (Owned), Unread (Borrowed), Reading, Completed)
-- changes to database setup statuses to match new book status naming. This is reflected in queries.sql 
-- Mask password & email address on [Validation Error] messages in console log (for security)
-- included my drawio planning diagram
-- some minor layout tweek to user stars
-- fixed hiding "No Reviews Yet" after submitting a review
-- disabled submit button for review if no star rating is selected
+- Allow users to remove a book from their collection (Demonstrate ability to delete data)

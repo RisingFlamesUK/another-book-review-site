@@ -87,7 +87,7 @@
       <p id="work-authors"> <%= displayAuthors %></p>
     </div>
 
-    <div class="flex width-100 align-center padding-bottom10">
+    <div class="flex width-100 align-center justify-between padding-bottom10">
       <div class="back-button-container">
         <div class="button left-margin-20">
           <div class="page-navigation-button">
@@ -98,7 +98,16 @@
           </div>
         </div>
       </div>
+      <div class="edition-button-spacer"></div>
+
+      <div class="remove-book-button-container justify-self- right-margin-20 <%= locals.edition.isInCollection ? '' : 'invisible' %>">
+        <button id="remove-book-button" class="button danger remove-from-collection-btn">
+          Remove from Collection
+          <i class="bi bi-bookmark-x-fill"></i>
+        </button>
+      </div>
     </div>
+
 
     <div id="edition-details" class="flex">
 
@@ -118,23 +127,22 @@
           <% } %>
         </div>
 
-        <% if (locals.user && locals.edition.isInCollection) { %>
-        <div id="edition-user-score-section">
+        <div id="edition-user-score-section" class="<%= !(locals.user && locals.edition.isInCollection) ? 'invisible' : '' %>">
           <div class="user-rating-wrapper flex align-center" data-edition-olid="<%= edition.edition_olid %>" data-work-olid="<%= edition.work_olid %>">
-            <p>My Score: &nbsp;</p><%- processUserScore(userScore) %>
+            <p>My Score: &nbsp;</p>
+            <%- processUserScore(userScore) %>
           </div>
         </div>
 
-        <div class="book-status">
+        <div class="book-status <%= !(locals.user && locals.edition.isInCollection) ? 'invisible' : '' %>">
           <div class="select-wrapper">
-            <select class="status-select" id="status-<%= locals.edition.edition_olid %>" data-edition-olid="<%= locals.edition.edition_olid %>">
+            <select class="status-select" id="status-<%= edition.edition_olid %>" data-edition-olid="<%= edition.edition_olid %>">
               <% cachedStatuses.forEach(s => { %>
-              <option value="<%= s.id %>" <%= s.id == locals.edition.status_id ? 'selected' : '' %>><%= s.status %></option>
+              <option value="<%= s.id %>" <%= s.id == edition.status_id ? 'selected' : '' %>><%= s.status %></option>
               <% }); %>
             </select>
           </div>
         </div>
-        <% }; %>
       </div>
 
       <div id="edition-text" class="flex vertical align-center flex-remainder">

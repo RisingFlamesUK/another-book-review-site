@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backButton = document.getElementById('back-button');
     const section = document.getElementById('user-review-section');
     const statusDropdown = document.querySelector('.status-select');
+    const removeBtn = document.getElementById('remove-book-button');
 
     function getElements() {
         return {
@@ -93,13 +94,25 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStars(val);
             updateLabel(val);
             updateHiddenInput(val);
-            updateButtonState(); 
+            updateButtonState();
         });
     }
 
     function renderCollectionStatus() {
         if (!collectionStatusContainer || !isUserLoggedIn) return;
+
         collectionStatusContainer.innerHTML = '';
+
+        const removeContainer = document.querySelector('.remove-book-button-container');
+        if (removeContainer) {
+            removeContainer.classList.toggle('invisible', !isInCollection);
+        }
+
+        const statusWrapper = document.querySelector('.book-status');
+        if (statusWrapper) {
+            statusWrapper.classList.toggle('invisible', !isInCollection);
+        }
+
         if (isInCollection) {
             collectionStatusContainer.innerHTML = `
         <div id="edition-in-collection-badge" class="in-collection-badge" data-edition-olid="${editionOlid}">
@@ -132,6 +145,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!resp.ok) throw new Error(await resp.text());
             isInCollection = true;
+            const scoreSection = document.getElementById('edition-user-score-section');
+            if (scoreSection) {
+                scoreSection.classList.remove('invisible');
+                const stars = scoreSection.querySelector('.user-stars-container');
+                if (stars) window.initializeUserStars?.(stars);
+            }
+
+            const statusWrapper = document.querySelector('.book-status');
+            if (statusWrapper) {
+                statusWrapper.classList.remove('invisible');
+            }
+            
             renderCollectionStatus();
             renderReviewActionStatus();
         } catch (err) {
@@ -271,7 +296,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const form = evt.target;
         const scoreStr = form.querySelector('#reviewFormScoreInput')?.value;
         if (!scoreStr) return alert('Select a rating');
-        console.log('[DEBUG] Hidden score input value:', form.querySelector('#reviewFormScoreInput')?.value);
         const score = parseInt(scoreStr, 10);
         const btn = form.querySelector('#submitReviewButton');
         btn.disabled = true;
@@ -375,6 +399,80 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 console.error('Error updating status:', err);
                 alert('Failed to update book status. Please try again.');
+            }
+        });
+    }
+
+    if (removeBtn) {
+        removeBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (!confirm('Are you sure you want to remove this book from your collection? It will also remove all notes and reviews')) return;
+
+            try {
+                const resp = await fetch('/delete-user-book', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        edition_olid: editionOlid
+                    })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.message);
+
+                isInCollection = false;
+                hasUserReview = false;
+                userReviewId = '';
+
+                // 🔁 Rerender sections
+                renderCollectionStatus();
+                renderReviewActionStatus();
+
+                // 🚫 Hide or clear "My Score" section
+                const scoreWrapper = document.getElementById('edition-user-score-section');
+                if (scoreWrapper) {
+                    scoreWrapper.classList.add('invisible');
+                }
+
+                const stars = scoreWrapper.querySelector('.user-stars-container');
+                if (stars) {
+                    stars.dataset.originalScore = '0';
+                    window.initializeUserStars?.(stars); // Re-init to reflect removal
+                }
+
+                // 🎯 Hide status dropdown
+                const statusWrapper = document.querySelector('.book-status');
+                if (statusWrapper) {
+                    statusWrapper.classList.add('invisible');
+                }
+
+                // ❌ Remove user's review card if it exists
+                if (userReviewId) {
+                    const card = document.getElementById(`review-container-${userReviewId}`);
+                    if (card) card.remove();
+                }
+
+                // ✅ Refresh work score stars and review count display
+                const workScoreP = document.querySelector('#edition-work-score p');
+                if (workScoreP && data.workScore != null && data.reviewCount != null) {
+                    window.updateWorkScoreDisplay(workScoreP, data.workScore, data.reviewCount);
+                }
+
+                // 🧼 Clear review form if visible
+                if (userReviewFormWrapper) {
+                    userReviewFormWrapper.innerHTML = '';
+                    userReviewFormWrapper.classList.add('invisible');
+                }
+
+                // 🕳️ Show empty state if no reviews remain
+                const section = document.getElementById('user-review-section');
+                const remainingReviews = section.querySelectorAll('.review-card');
+                if (remainingReviews.length === 0) {
+                    document.getElementById('no-reviews-placeholder')?.classList.remove('invisible');
+                }
+            } catch (err) {
+                alert('Failed to remove book: ' + err.message);
             }
         });
     }
