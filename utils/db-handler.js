@@ -834,94 +834,6 @@ export async function getAuthors(authorOlidInput) {
 //*    functions                *//
 //* --------------------------- *//
 /**
- * Sets or updates a user's score for a specific book edition and updates the overall work score.
- *
- * @param {number} user_id - The ID of the user.
- * @param {string} edition_olid - The Open Library Edition ID of the book.
- * @param {string} work_olid - The Open Library Work ID of the book.
- * @param {number} score - The score given by the user (e.g., 1-5).
- * @returns {Promise<Object>} A promise that resolves to an object containing the new user score, new work score, and new work review count.
- * @throws {Error} If a failure occurs during any database operation or if the user-book relationship is not found.
- */
-export async function putUserScore(user_id, edition_olid, work_olid, score) {
-    let client;
-    try {
-        client = await database.connect();
-        await client.query('BEGIN'); // Start transaction
-
-        // 1. Determine existing user-book review
-        const oldResult = await client.query(`
-            SELECT
-                br.id AS review_id, 
-                br.score
-            FROM users_books AS ub
-            JOIN book_review AS br ON ub.id = br.user_book_id
-            WHERE ub.user_id = $1 AND ub.edition_olid = $2;
-        `, [user_id, edition_olid]);
-
-        const isNewReview = oldResult.rows.length === 0;
-        const oldScore = isNewReview ? 0 : oldResult.rows[0].score;
-        const newScore = score;
-        const scoreChange = newScore - oldScore;
-
-        // 2. INSERT or UPDATE book_review
-        let reviewResult;
-        if (isNewReview) {
-            const userBookRes = await client.query(`
-        SELECT id FROM users_books
-        WHERE user_id = $1 AND edition_olid = $2
-      `, [user_id, edition_olid]);
-            if (!userBookRes.rows.length) {
-                throw new Error(`User-book not found`);
-            }
-            const user_book_id = userBookRes.rows[0].id;
-
-            reviewResult = await client.query(`
-        INSERT INTO book_review (user_book_id, score, last_modified)
-        VALUES ($1, $2, CURRENT_TIMESTAMP)
-        RETURNING *
-      `, [user_book_id, newScore]);
-        } else {
-            const review_id = oldResult.rows[0].review_id;
-            reviewResult = await client.query(`
-        UPDATE book_review SET score = $1, last_modified = CURRENT_TIMESTAMP
-        WHERE id = $2 RETURNING *
-      `, [newScore, review_id]);
-        }
-
-        if (!reviewResult.rows.length) {
-            throw new Error('Failed to insert/update review');
-        }
-
-        // 3. Update aggregate work score
-        const {
-            newWorkScore,
-            newReviewCount
-        } = await updateWorkScore({
-            client,
-            work_olid,
-            scoreChange,
-            isNewReview
-        });
-
-        await client.query('COMMIT');
-
-        return {
-            newUserScore: reviewResult.rows[0].score,
-            newWorkScore,
-            newReviewCount
-        };
-
-    } catch (err) {
-        if (client) await client.query('ROLLBACK');
-        console.error(`Error in putUserScore:`, err);
-        throw new Error(`Database error setting user score: ${err.message}`);
-    } finally {
-        if (client) client.release();
-    }
-}
-
-/**
  * Inserts or updates a book review using ON CONFLICT on user_book_id.
  *
  * @param {UUID} user_id
@@ -939,15 +851,6 @@ export async function putUserReview(user_id, edition_olid, review_title, review,
 
         const user_book_id = await getUserBookId(user_id, edition_olid, client);
 
-        // 1. Fetch oldScore for calculating scoreChange
-        const oldRow = await client.query(`
-            SELECT score FROM book_review
-            WHERE user_book_id = $1
-            `, [user_book_id]);
-
-        const oldScore = oldRow.rows.length > 0 ? oldRow.rows[0].score : null;
-
-        // 2. Upsert the review
         const reviewResult = await client.query(`
             INSERT INTO book_review (user_book_id, review_title, review, score)
             VALUES ($1, $2, $3, $4)
@@ -958,43 +861,31 @@ export async function putUserReview(user_id, edition_olid, review_title, review,
                 score = EXCLUDED.score,
                 last_modified = CURRENT_TIMESTAMP
             RETURNING *;
-            `, [user_book_id, review_title, review, score]);
+        `, [user_book_id, review_title, review, score]);
 
-        // 3. Retrieve work_olid for aggregation
-        const ub = await client.query(`
-            SELECT be.work_olid
-            FROM book_editions AS be
-            JOIN users_books AS ub ON ub.edition_olid = be.edition_olid
-            WHERE ub.id = $1
-            `, [user_book_id]);
+        const workResult = await client.query(`
+            SELECT work_olid FROM book_editions WHERE edition_olid = $1
+        `, [edition_olid]);
 
-        if (!ub.rows.length || !ub.rows[0].work_olid) {
-            throw new Error(`Missing work_olid for user_book_id: ${user_book_id}`);
+        if (!workResult.rows.length || !workResult.rows[0].work_olid) {
+            throw new Error(`Missing work_olid for edition_olid: ${edition_olid}`);
         }
-        const work_olid = ub.rows[0].work_olid;
 
-        // 4. Compute scoreChange and identify new vs update
-        const newScore = score;
-        const scoreChange = newScore - (oldScore || 0);
-        const isNewReview = oldScore === null;
+        const work_olid = workResult.rows[0].work_olid;
 
-        // 5. Update aggregated work score
         const {
-            newWorkScore,
-            newReviewCount
-        } = await updateWorkScore({
-            client,
-            work_olid,
-            scoreChange,
-            isNewReview
-        });
+            totalScore,
+            averageScore,
+            reviewCount
+        } = await refreshWorkScore(work_olid, client);
 
         await client.query('COMMIT');
 
         return {
             review: reviewResult.rows[0],
-            workScore: newWorkScore,
-            reviewCount: newReviewCount
+            workScore: totalScore,
+            averageScore,
+            reviewCount
         };
 
     } catch (err) {
@@ -1005,6 +896,18 @@ export async function putUserReview(user_id, edition_olid, review_title, review,
     }
 }
 
+
+
+/**
+ * Partially updates a user's review for a given edition. If no review exists, it inserts one.
+ * Fields not provided in the update object are preserved.
+ *
+ * @param {string} user_id - The UUID of the user.
+ * @param {string} edition_olid - The OLID of the edition being reviewed.
+ * @param {Object} updates - Partial review data to update. Supports: { review_title, review, score }
+ * @returns {Promise<Object>} The updated or inserted review, along with the refreshed work score and review count.
+ * @throws Will throw an error if the transaction fails or required data is missing.
+ */
 export async function patchUserReview(user_id, edition_olid, updates = {}) {
     let client;
     try {
@@ -1013,67 +916,46 @@ export async function patchUserReview(user_id, edition_olid, updates = {}) {
 
         const user_book_id = await getUserBookId(user_id, edition_olid, client);
 
-        // 1. Fetch old score for calculating scoreChange
-        const oldRow = await client.query(`
-      SELECT score FROM book_review
-      WHERE user_book_id = $1
-    `, [user_book_id]);
-
-        const oldScore = oldRow.rows.length > 0 ? oldRow.rows[0].score : null;
-
-        // 2. Build dynamic upsert values
         const review_title = updates.review_title ?? null;
         const review = updates.review ?? null;
         const score = updates.score ?? null;
 
         const reviewResult = await client.query(`
-      INSERT INTO book_review (user_book_id, review_title, review, score)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (user_book_id) WHERE user_book_id IS NOT NULL
-      DO UPDATE SET
-        review_title = COALESCE(EXCLUDED.review_title, book_review.review_title),
-        review = COALESCE(EXCLUDED.review, book_review.review),
-        score = COALESCE(EXCLUDED.score, book_review.score),
-        last_modified = CURRENT_TIMESTAMP
-      RETURNING *;
-    `, [user_book_id, review_title, review, score]);
+            INSERT INTO book_review (user_book_id, review_title, review, score)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_book_id) WHERE user_book_id IS NOT NULL
+            DO UPDATE SET
+                review_title = COALESCE(EXCLUDED.review_title, book_review.review_title),
+                review = COALESCE(EXCLUDED.review, book_review.review),
+                score = COALESCE(EXCLUDED.score, book_review.score),
+                last_modified = CURRENT_TIMESTAMP
+            RETURNING *;
+        `, [user_book_id, review_title, review, score]);
 
-        // 3. Get work_olid for aggregation
-        const ub = await client.query(`
-      SELECT be.work_olid
-      FROM book_editions AS be
-      JOIN users_books AS ub ON ub.edition_olid = be.edition_olid
-      WHERE ub.id = $1
-    `, [user_book_id]);
+        const result = await client.query(`
+            SELECT work_olid FROM book_editions
+            WHERE edition_olid = $1
+        `, [edition_olid]);
 
-        if (!ub.rows.length || !ub.rows[0].work_olid) {
-            throw new Error(`Missing work_olid for user_book_id: ${user_book_id}`);
+        if (!result.rows.length || !result.rows[0].work_olid) {
+            throw new Error(`Missing work_olid for edition_olid: ${edition_olid}`);
         }
 
-        const work_olid = ub.rows[0].work_olid;
+        const work_olid = result.rows[0].work_olid;
 
-        // 4. Compute score change
-        const newScore = reviewResult.rows[0].score;
-        const scoreChange = (newScore ?? 0) - (oldScore ?? 0);
-        const isNewReview = oldScore === null;
-
-        // 5. Update work score
         const {
-            newWorkScore,
-            newReviewCount
-        } = await updateWorkScore({
-            client,
-            work_olid,
-            scoreChange,
-            isNewReview
-        });
+            totalScore,
+            averageScore,
+            reviewCount
+        } = await refreshWorkScore(work_olid, client);
 
         await client.query('COMMIT');
 
         return {
             review: reviewResult.rows[0],
-            workScore: newWorkScore,
-            reviewCount: newReviewCount
+            workScore: totalScore,
+            averageScore,
+            reviewCount
         };
     } catch (err) {
         if (client) await client.query('ROLLBACK');
@@ -1082,6 +964,8 @@ export async function patchUserReview(user_id, edition_olid, updates = {}) {
         if (client) client.release();
     }
 }
+
+
 
 /**
  * Update a user's status for a specific edition.
@@ -1166,14 +1050,13 @@ export async function deleteUserEdition(user_id, edition_olid) {
         `, [user_id, edition_olid]);
 
         const deletedCount = result.rowCount;
-        let workscore
-        // If user had a review, refresh the score
-        if (userScore !== null) {
-            workscore = await refreshWorkScore(client, work_olid);
-        }
+        const workscore = await refreshWorkScore(work_olid, client);
 
         await client.query('COMMIT');
-        return {deletedCount, workscore};
+        return {
+            deletedCount,
+            workscore
+        };
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -1211,76 +1094,7 @@ export async function checkUserBook(user_id, edition_olid) {
     }
 }
 
-
-
-
-/**
- * Update or create the aggregated work score for a given work OLID.
- * You must pass either:
- *   - `client`, `work_olid`, and `scoreChange` (+/- from previous review)
- *   OR
- *   - just `work_olid` and `score` (+1…5) for new review (without client).
- *
- * @param {Object} params
- * @param {import('pg').PoolClient} [params.client] - Optional DB client/transaction.
- * @param {string} params.work_olid - The work OLID.
- * @param {number} params.scoreChange - Difference between new and old score, or the full score if new.
- * @param {boolean} params.isNewReview - True if this is a newly added review (not update).
- * @returns {Promise<{ newWorkScore: number, newReviewCount: number }>}
- */
-async function updateWorkScore({
-    client,
-    work_olid,
-    scoreChange,
-    isNewReview
-}) {
-    let ownDb = false;
-    if (!client) {
-        client = await database.connect();
-        await client.query('BEGIN');
-        ownDb = true;
-    }
-
-    const res = await client.query(`
-        SELECT score AS workscore, review_count FROM works_scores WHERE work_olid = $1
-        `, [work_olid]);
-
-    let newScore, newCount;
-
-    if (res.rows.length > 0) {
-        const {
-            workscore: cur,
-            review_count: cnt
-        } = res.rows[0];
-        newScore = cur + scoreChange;
-        newCount = cnt + (isNewReview ? 1 : 0);
-        await client.query(`
-            UPDATE works_scores
-                SET score = $1, review_count = $2
-                WHERE work_olid = $3
-            `, [newScore, newCount, work_olid]);
-    } else {
-        newScore = scoreChange;
-        newCount = 1;
-        await client.query(`
-            INSERT INTO works_scores (work_olid, score, review_count)
-            VALUES ($1, $2, $3)
-            `, [work_olid, newScore, newCount]);
-    }
-
-    if (ownDb) {
-        await client.query('COMMIT');
-    }
-
-    if (ownDb) client.release();
-
-    return {
-        newWorkScore: newScore,
-        newReviewCount: newCount
-    };
-}
-
-export async function refreshWorkScore(client, work_olid) {
+export async function refreshWorkScore(work_olid, client) {
     let ownDb = false;
     try {
         if (!client) {
@@ -1316,8 +1130,11 @@ export async function refreshWorkScore(client, work_olid) {
 
         if (ownDb) client.release();
 
+        const averageScore = reviewCount > 0 ? totalScore / reviewCount : 0;
+
         return {
-            workScore: totalScore,
+            totalScore,
+            averageScore,
             reviewCount
         };
 

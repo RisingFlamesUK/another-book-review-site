@@ -754,10 +754,12 @@ app.post('/set-user-score', validateBody(['edition_olid', 'score']), async (req,
             score
         });
 
+        console.log('[DEBUG] set-user-score result:', result)
+
         if (result.review.score === score) {
 
 
-            console.log(`Successfully updated user scrore user: ${user_id}, edition: ${edition_olid}, new score:  ${score}`)
+            console.log(`Successfully updated user score user: ${user_id}, edition: ${edition_olid}, new score:  ${score}`)
 
             res.json({
                 success: true,
@@ -886,9 +888,9 @@ app.delete('/delete-user-book', validateBody(['edition_olid']), async (req, res)
     try {
         const result = await deleteUserEdition(user_id, edition_olid);
         const deletedCount = result.deletedCount;
-        const workScore = result.workscore.workScore;
-        const reviewCount = result.workscore.reviewCount
-
+        const workScore = result.workscore.averageScore;
+        const reviewCount = result.workscore.reviewCount;
+        
         if (deletedCount === 0) {
             return res.status(404).json({ message: 'Book not found in collection' });
         }

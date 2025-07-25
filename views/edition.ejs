@@ -183,16 +183,14 @@
           <div class="flex vertical height100">
             <div id="review-action-container" class="edition-reviews-Header flex justify-between align-center">
               <h3>Reviews</h3>
-              <% if (locals.user) { %>
-              <% if (!locals.edition.userReviewID) { %>
-              <% if (locals.edition.isInCollection) { %>
-              <span id="add-book-span" class="invisible">Add this book to your collection to review it</span>
-              <button class="button add-review-button" data-action="add-review">Add Review</button>
-              <% } else { %>
-              <span id="add-book-span">Add this book to your collection to review it</span>
-              <button class="button add-review-button invisible" data-action="add-review">Add Review</button>
-              <% } %>
-              <% } %>
+              <% if (locals.user && !locals.edition.userReviewID) { %>
+              <span id="add-book-span" class="<%= locals.edition.isInCollection ? 'invisible' : '' %>">
+                Add this book to your collection to review it
+              </span>
+
+              <button class="button add-review-button <%= locals.edition.isInCollection ? '' : 'invisible' %>" data-action="add-review">
+                Add Review
+              </button>
               <% } %>
             </div>
 
@@ -209,20 +207,18 @@
               <% edition.editionReviews.forEach(review => { %>
               <div id="review-container-<%= review.review_id %>">
                 <%- include("partials/review.ejs", {
-                    reviewData: review,
-                    isUserReview: (review.review_id === locals.edition.userReviewID),
-                    username: locals.user?.username,
-                    userImage: locals.user?.image
-                  }) %>
-
+          reviewData: review,
+          isUserReview: (review.review_id === locals.edition.userReviewID),
+          username: locals.user?.username,
+          userImage: locals.user?.image
+        }) %>
               </div>
               <% }) %>
-              <% } else { %>
-              <div id="no-reviews-placeholder" class="flex vertical justify-center align-center flex-remainder">
+              <% } %>
+
+              <div id="no-reviews-placeholder" class="flex vertical justify-center align-center flex-remainder<%= edition.editionReviews.length ? ' invisible' : '' %>">
                 <div class="no-results-message">No reviews yet</div>
               </div>
-
-              <% } %>
             </section>
 
           </div>
